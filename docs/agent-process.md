@@ -10,7 +10,7 @@ first find out which document it belongs to:
 | Document | Answers | What you write there |
 |---|---|---|
 | **AGENTS.md** (this one) | "What are the rules, how do I work here?" | Normative summary (must/never). DDL detail -> link to SCHEMA. |
-| **DECISIONS.md** | "Why is it like this?" | Append-only log `D-0xx` (rationale). Every feature = a record. |
+| **decisions/** | "Why is it like this?" | One file `D-nnn.md` per record (rationale) and one index row in `decisions/README.md`; `DECISIONS.md` is only a pointer. Every feature = a record. |
 | **SCHEMA.md** | "What exactly does the DB look like?" | The single truth about DDL, views and the IFC mapping (§5). |
 | **ROADMAP.md** | "What is done and what is next?" | The **only** place for the live state and sprints. |
 | **README.md** | "How do I run and deploy it?" | Human onboarding. |
@@ -31,7 +31,7 @@ economics of context: tools pull layer 1 into every prompt, so it must be short
 Rules for writing (agent and human):
 1. **First decide the target document** from the table above; if the fact belongs to layer 2, put
    at most a one-sentence link into `AGENTS.md`, not a copy.
-2. **New feature => first a `D-0xx` record in `DECISIONS.md`** (rationale), only then code.
+2. **New feature => first a `D-0xx` record in `decisions/`** (rationale; new record = `decisions/D-nnn.md` + one index row in `decisions/README.md`, never append to `DECISIONS.md`), only then code.
    Without a decision the feature is not built.
 3. **DB change => a new migration + an update of `SCHEMA.md`** (old migrations are not deleted).
 4. **Change of state or priority => only `ROADMAP.md`** (section "State"); the state is not duplicated anywhere else.
@@ -47,8 +47,8 @@ Rules for writing (agent and human):
    current state (ROADMAP "State", git, DB) and what has changed; reconsider the order and
    scope of sprints and steps accordingly, and only then write the `D-0xx` detail and code.
 9. **Align the documents after a sprint or commit (multi-tool):** after finishing a sprint and after
-   a commit, always align the supporting documents: `ROADMAP.md` ("State" and changelog), `DECISIONS.md`
-   (`D-0xx`), `SCHEMA.md` (if the DB was touched) and the **thin tool pointers** (`CLAUDE.md`,
+   a commit, always align the supporting documents: `ROADMAP.md` ("State" and changelog), `decisions/`
+   (`D-nnn.md`), `SCHEMA.md` (if the DB was touched) and the **thin tool pointers** (`CLAUDE.md`,
    `.github/copilot-instructions.md`, `.cursor/rules/aim-platform.mdc`, possibly `GEMINI.md`),
    so that any other tool started on the repo has current, consistent context (the source of
    truth stays `AGENTS.md`, the pointers carry no duplicated content).

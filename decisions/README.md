@@ -249,3 +249,4 @@
 | [D-193](D-193.md) | Samuel's decisions relayed by the orchestrator | decided | Date: 2026-11-05 · Status: approved (Samuel 5 Nov; number from the... |
 | [D-194](D-194.md) | The project in English | decided | Date: 2026-11-05 · Status: approved (Samuel 5 Nov; scope widened the same day;... |
 | [D-195](D-195.md) | IFC 4.3 schema in the repo, entity manifest entity_types, properties._attributes | decided | Date: 2026-11-05 · Status: approved (Samuel 5 Nov, plan round of platform step... |
+| [D-196](D-196.md) | Relationship validation per the IFC schema (R10) and the transaction log (R2, R12) | decided | Date: 2026-11-05 · Status: approved (Samuel 5 Nov in the step session: "A to I... |
