@@ -593,7 +593,7 @@ anon / authenticated have no access to it. The host reads through RPCs in `publi
 `supabase/migrations/20261102200000_library_hlava_read.sql`, APPLIED 2 Nov; test `supabase/tests/library_hlava_read.sql`):
 `library_hlava_zoznam(p_kniznica text default null)` (without the text, + `dlzka`) and `library_hlava_subor(p_kniznica, p_cesta)`
 (with the text); `stable`, `security invoker`, `search_path = ''`, EXECUTE only `service_role`.
-Writing from the editor (D-186 step 3; migration `supabase/pending/20261102210000_library_zapis.sql`, NOT APPLIED; test
+Writing from the editor (D-186 step 3; migration `supabase/migrations/20261102210000_library_zapis.sql`, APPLIED 2 Nov (checked read-only on production 5 Nov); test
 `supabase/tests/library_zapis.sql`): `library_texty(p_kniznica)` (the head with the text for the loader on save) and
 `library_zapis(p_kniznica, p_autor, p_sprava, p_zdroj, p_schema_verzia, p_zapisy, p_projekcie, p_engine)` =
 `library.zapis_revizie` (all or nothing, `ocakavana` sha256, conflict AS409 with the paths in `detail`) and in the same
