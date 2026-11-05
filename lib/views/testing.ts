@@ -1,4 +1,4 @@
-/** Spoločné pomôcky testov uložených pohľadov (D-122): úložisko v pamäti a stav viewera. */
+/** Shared helpers of saved-view tests (D-122): an in-memory store and the viewer state. */
 
 import type { ViewWire } from "../viewer-views";
 
@@ -12,7 +12,7 @@ export const G2 = "1hOSvn6df7F8_7GcBWlS5a";
 export const G3 = "0K3dl0Rbv5cvC0BzkOVRSm";
 export const STOREY = "27hbQtAoP6qvoEYhPARoI7";
 
-/** Odpoveď `view_state` forku s D-122 (skryté a izolované GUIDy). */
+/** `view_state` response of a fork with D-122 (hidden and isolated GUIDs). */
 export const VIEW_STATE = {
   frame: "ifc_world",
   units: "m",
@@ -93,7 +93,7 @@ export function memoryViewStore(): SavedViewStore & { rows: SavedViewRow[] } {
   };
 }
 
-/** Stav po `VIEW_CAPTURE`: viewer uložil pohľad a host ho zapísal (`written`) pod `view.id`. */
+/** State after `VIEW_CAPTURE`: the viewer saved the view and the host wrote it (`written`) under `view.id`. */
 export const CAPTURED_ID = "5b5a6f0e-2b7b-4a53-8d3e-7a1f6c2d9e01";
 
 export function testDeps(state: unknown = VIEW_STATE) {
@@ -102,8 +102,8 @@ export function testDeps(state: unknown = VIEW_STATE) {
     store,
     captured: [] as { name: string; capture_id: string }[],
     changed: 0,
-    // Nový fork: viewer uloží pohľad (`VIEW_SAVE`) a host ho zapíše do DB; `onCapture` nahrádza zápis hosta
-    // (prázdny = zápis z viewera je vypnutý).
+        // New fork: the viewer saves the view (`VIEW_SAVE`) and the host writes it to the DB; `onCapture` replaces the host write
+        // (empty = writing from the viewer is off).
     onCapture: async (req: { name: string; capture_id: string }): Promise<void> => {
       await saveWire(store, wireView({ name: req.name }), {});
     },
@@ -124,7 +124,7 @@ export function testDeps(state: unknown = VIEW_STATE) {
   return deps;
 }
 
-/** Pohľad z panela Presentation (D-161) tak, ako ho pošle viewer: pôdorys 2NP, rez 1,2 m, celý viditeľný model. */
+/** View from the Presentation panel (D-161) as the viewer sends it: floor plan of 2NP, section 1.2 m, the whole model visible. */
 export function wireView(over: Partial<ViewWire> = {}): ViewWire {
   return {
     id: CAPTURED_ID,

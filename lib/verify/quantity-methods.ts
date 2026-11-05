@@ -1,11 +1,11 @@
 /**
- * Register metód výmer (D-185): JEDINÉ miesto, kde sú záväzné pravidlá overovača výmer voči
- * geometrii. Číta ho kód (lib/engine/space-verify.ts) a výsledok overenia z neho nesie pri každej
- * hodnote metódu, definíciu zo schémy a použitú toleranciu, aby ich videl používateľ vo vieweri.
- * Dokumenty (DECISIONS.md D-185, docs/research) sem odkazujú, pravidlá nekopírujú.
+  * Registry of quantity methods (D-185): the ONLY place where the binding rules of the quantity verifier against
+  * the geometry live. The code reads it (lib/engine/space-verify.ts) and the verification result carries from it, for every
+  * value, the method, the definition from the schema and the tolerance used, so that the user sees them in the viewer.
+  * Documents (DECISIONS.md D-185, docs/research) refer here, they do not copy the rules.
  *
- * Zdroj definícií: buildingSMART/IFC4.3.x-development `d71e140` (2026-10-29),
- * reference_schemas/psd/Qto_SpaceBaseQuantities.xml a psd_IFC4_ADD2_TC1 (text v oboch rovnaký).
+  * Source of the definitions: buildingSMART/IFC4.3.x-development `d71e140` (2026-10-29),
+  * reference_schemas/psd/Qto_SpaceBaseQuantities.xml and psd_IFC4_ADD2_TC1 (the text is the same in both).
  */
 
 export const REGISTRY_VERSION = 4;
@@ -18,26 +18,26 @@ export const SPEC_REF = {
   ifc_space: "docs/schemas/core/IfcProductExtension/Entities/IfcSpace.md",
 } as const;
 
-// ── tolerancie (Samuel 1. 11. 2026: schválené) ───────────────────────────────
+// ── tolerances (Samuel 1. 11. 2026: approved) ───────────────────────────────
 
 export type QuantityKind = "length" | "perimeter" | "area" | "volume";
 
 export interface ToleranceRule {
   kind: QuantityKind;
-  /** Absolútna tolerancia v m / m2 / m3 (null = nepoužíva sa). */
+    /** Absolute tolerance in m / m2 / m3 (null = not used). */
   abs: number | null;
-  /** Relatívna tolerancia (podiel hodnoty zo súboru, null = nepoužíva sa). */
+    /** Relative tolerance (a share of the value from the file, null = not used). */
   rel: number | null;
-  /** Text pre používateľa. */
+    /** Text for the user. */
   text: string;
 }
 
-/** Hodnota je v tolerancii, keď spĺňa aspoň jednu z hraníc (abs alebo rel). */
+/** A value is within tolerance when it meets at least one of the limits (abs or rel). */
 export const TOLERANCES: Record<QuantityKind, ToleranceRule> = {
   length: { kind: "length", abs: 0.005, rel: null, text: "dĺžka +- 5 mm" },
   /**
-   * Obvod (Samuel 1. 11. 2026, po druhom behu): súčet mnohých hrán, pri meshi zaokrúhlených na mm, preto relatívne
-   * 0,05 %, najmenej 5 mm (druhý beh: odchýlky 6 až 23 mm pri obvode 63 až 93 m = 0,01 až 0,04 %).
+      * Perimeter (Samuel 1. 11. 2026, after the second run): a sum of many edges, rounded to mm for a mesh, hence relative
+      * 0.05 %, at least 5 mm (second run: deviations of 6 to 23 mm at a perimeter of 63 to 93 m = 0.01 to 0.04 %).
    */
   perimeter: { kind: "perimeter", abs: 0.005, rel: 0.0005, text: "obvod +- 0,05 %, najmenej +- 5 mm" },
   area: { kind: "area", abs: null, rel: 0.005, text: "plocha +- 0,5 %" },
@@ -51,10 +51,10 @@ export function withinTolerance(file: number, computed: number, kind: QuantityKi
 }
 
 /**
- * NetVolume (Samuel 1. 11. 2026): tolerancia viazaná na odčítaný objem, najviac 1 % z GrossVolume - NetVolume
- * zo súboru. Pri 0,5 % z objemu miestnosti by sa pri tenkých krytinách nerozlíšila metóda podľa schémy od Revit
- * metódy "krytiny po celej ploche" (testovací model: rozdiel 0,2 m3 pri 333 m3). `epsilon_m3` pokrýva len zaokrúhlenie
- * hodnôt v súbore (4 desatinné miesta), nie metódu.
+  * NetVolume (Samuel 1. 11. 2026): tolerance tied to the subtracted volume, at most 1 % of GrossVolume - NetVolume
+  * from the file. At 0.5 % of the space volume the schema method could not be distinguished from the Revit
+  * method "coverings over the whole area" for thin coverings (test model: a difference of 0.2 m3 at 333 m3). `epsilon_m3` covers only the rounding
+  * of the values in the file (4 decimal places), not the method.
  */
 export const NET_VOLUME_TOLERANCE = { rel_of_cut: 0.01, epsilon_m3: 0.0005 } as const;
 
@@ -65,40 +65,40 @@ export function netVolumeTolerance(grossVolumeFile: number, netVolumeFile: numbe
   return { abs_m3: abs, text: `objem NetVolume +- 1 % z GrossVolume - NetVolume (${fmt(cut)} m3) = +- ${fmt(abs)} m3` };
 }
 
-// ── pravidlá výberu prvkov ───────────────────────────────────────────────────
+// ── element selection rules ───────────────────────────────────────────────
 
 export const SELECTION = {
-  /** Doska pod / nad: podiel pôdorysu miestnosti, ktorý musí prekryť. */
+    /** Slab below / above: the share of the space footprint that it must cover. */
   slab_min_overlap: 0.5,
-  /** Podlahovina: podiel pôdorysu miestnosti. */
+    /** Floor covering: the share of the space footprint. */
   flooring_min_overlap: 0.5,
-  /** Podhľad: podiel pôdorysu, od ktorého sa výška podhľadu ráta ako ďalšia výška miestnosti. */
+    /** Ceiling: the share of the footprint from which the ceiling height counts as another space height. */
   ceiling_min_overlap: 0.1,
-  /** Dotyk plôch (doska - teleso miestnosti) v m. */
+    /** Surface contact (slab - space body) in m. */
   contact_m: 0.005,
-  /** Prienik pôdorysov menší než toto (m2) sa nepočíta: dotyk hranou, nie prekryv (D-185 oprava). */
+    /** An intersection of footprints smaller than this (m2) is not counted: an edge contact, not an overlap (D-185 fix). */
   min_overlap_m2: 1e-4,
 } as const;
 
 /**
- * Krytiny, ktoré NetVolume odčíta (D-185 oprava B3): len podlahovina a podhľad. Izolácia (INSULATION), strešné
- * vrstvy (ROOFING) a obklady vnútri telesa miestnosti sa neodčítajú; Revit ich v NetVolume tiež neodčíta.
+  * Coverings that NetVolume subtracts (D-185 fix B3): only the floor covering and the ceiling. Insulation (INSULATION), roof
+  * layers (ROOFING) and claddings inside the space body are not subtracted; Revit does not subtract them in NetVolume either.
  */
 export const NET_VOLUME_COVERINGS: readonly string[] = ["FLOORING", "CEILING"];
 
 /**
- * Náhrada telesa (D-185 oprava): keď extrúzia chýba alebo ju ifc-lite odmietne, teleso je uzavretý mesh motora:
- * pôdorys = priemet plôch s normálou nadol, objem divergenciou, obvod = hrany pôdorysu bez suseda. Sivá len
- * keď mesh nie je uzavretý. Prvok, z ktorého časť extrúzie chýba, sa nepočíta z časti (celý ide na mesh).
+  * Body substitute (D-185 fix): when the extrusion is missing or ifc-lite rejects it, the body is the engine's closed mesh:
+  * footprint = projection of faces with a downward normal, volume by divergence, perimeter = footprint edges without a neighbour. Grey only
+  * when the mesh is not closed. An element with a missing part of the extrusion is not computed from the part (all of it goes to the mesh).
  */
 export const BODY_FALLBACK = { mesh_requires_closed: true, open_mesh: "plan_and_height_only" } as const;
 
 /**
- * Neuzavretý mesh (D-185 doplnok 2, Samuel 1. 11. 2026): prvok, ktorého profil ifc-lite odmietne a mesh nie je
- * uzavretý (druhý beh: 15 miestností a ich dosky, BCF #21), dá aspoň pôdorys z plôch s normálou nadol a výškový
- * rozsah z vrcholov. Ako referencia (doska, podlahovina, podhľad) sa použije normálne. Pri miestnosti: výška, plocha
- * a obvod sú zelené pri zhode, pri nesúlade SIVÉ (pôdorys môže byť neúplný, nález by nebol spoľahlivý);
- * GrossVolume a NetVolume sivé (objem neuzavretého meshu nie je definovaný).
+  * Unclosed mesh (D-185 addendum 2, Samuel 1. 11. 2026): an element whose profile ifc-lite rejects and the mesh is not
+  * closed (second run: 15 spaces and their slabs, BCF #21) yields at least the footprint from faces with a downward normal and the height
+  * range from the vertices. It is used normally as a reference (slab, floor covering, ceiling). For a space: height, area
+  * and perimeter are green on a match, GREY on a mismatch (the footprint may be incomplete, a finding would not be reliable);
+  * GrossVolume and NetVolume grey (the volume of an unclosed mesh is not defined).
  */
 export const OPEN_MESH_RULE = {
   id: "open-mesh@1",
@@ -106,21 +106,21 @@ export const OPEN_MESH_RULE = {
 } as const;
 
 /**
- * NetFloorArea (Samuel 3. 11. 2026: "podľa IFC schémy", D-185 dodatok 4): z GrossFloorArea (pôdorys telesa miestnosti) sa
- * odčíta pôdorys prvkov vnútri miestnosti a otvory v doske pod ňou. Schéma menuje "columns, inner walls, built-in's etc.,
- * slab openings, or other protruding elements"; register to prekladá na triedy nižšie.
- * - `element_types`: stĺpy, steny a vstavky. Vstavka = IfcBuildingElementProxy a IfcChimney vždy, IfcFurniture /
- *   IfcFurnishingElement len s `Pset_FurnitureTypeCommon.IsBuiltIn` = TRUE (na výskyte alebo type); voľný nábytok nie.
- *   Schodisko, zábradlie a prvky obvodového plášťa (IfcCurtainWall, IfcPlate, IfcMember) sa neodčítajú, schéma ich nemenuje.
- * - Prvok je "vnútri", keď jeho pôdorys pretína pôdorys miestnosti (prienik nad `min_overlap_m2`, dotyk hranou nie) a výškou
- *   vyčnieva nad hotovú podlahu (vrch podlahoviny, bez nej spodok telesa miestnosti) do pásma `floor_band_m` nad ňou; stena
- *   podlažia pod miestnosťou, ktorá končí v skladbe podlahy (ASR 2.01: SN07.01.0014 po vrch podlahoviny), ani trám pod
- *   stropom nie.
- * - Otvory v doske: IfcOpeningElement, ktorý vyrezáva dosku pod miestnosťou (vrch dosky na spodku miestnosti +- `contact_m`),
- *   a diery v profile tej dosky; obe len v rozsahu pôdorysu miestnosti.
- * - Prekryv odčítaných prvkov (stĺp v stene, otvor pod stĺpom) sa neodčíta dvakrát: bunka prvku nesie len časť, ktorú
- *   neodčítal prvok pred ním (presne pre dvojice, trojnásobný prekryv sa neopravuje).
- * - Výška sa neberie do úvahy (schéma: "no reduction for areas under a minimum headroom").
+  * NetFloorArea (Samuel 3. 11. 2026: "as per the IFC schema", D-185 addendum 4): from GrossFloorArea (footprint of the space body) the
+  * footprint of elements inside the space and the openings in the slab below it are subtracted. The schema names "columns, inner walls, built-in's etc.,
+  * slab openings, or other protruding elements"; the registry translates this into the classes below.
+  * - `element_types`: columns, walls and built-ins. Built-in = IfcBuildingElementProxy and IfcChimney always, IfcFurniture /
+  *   IfcFurnishingElement only with `Pset_FurnitureTypeCommon.IsBuiltIn` = TRUE (on the occurrence or the type); free-standing furniture no.
+  *   A staircase, a railing and curtain-wall elements (IfcCurtainWall, IfcPlate, IfcMember) are not subtracted, the schema does not name them.
+  * - An element is "inside" when its footprint intersects the space footprint (an intersection above `min_overlap_m2`, an edge contact does not) and in height
+  *   it protrudes above the finished floor (top of the floor covering, without it the bottom of the space body) into the band `floor_band_m` above it; a wall
+  *   of the storey below the space that ends in the floor assembly (ASR 2.01: SN07.01.0014 up to the top of the floor covering) does not count, nor does a beam under
+  *   the ceiling.
+  * - Openings in the slab: an IfcOpeningElement that cuts the slab below the space (top of the slab at the bottom of the space +- `contact_m`),
+  *   and holes in the profile of that slab; both only within the space footprint.
+  * - An overlap of subtracted elements (a column in a wall, an opening under a column) is not subtracted twice: an element cell carries only the part that
+  *   the element before it did not subtract (exactly for pairs, a triple overlap is not corrected).
+  * - Height is not taken into account (schema: "no reduction for areas under a minimum headroom").
  */
 export const NET_FLOOR_AREA = {
   element_types: [
@@ -131,30 +131,30 @@ export const NET_FLOOR_AREA = {
   /** Vstavky len s `Pset_FurnitureTypeCommon.IsBuiltIn` = TRUE. */
   built_in_types: ["IFCFURNITURE", "IFCFURNISHINGELEMENT"],
   built_in_property: { pset: "Pset_FurnitureTypeCommon", name: "IsBuiltIn" },
-  /** Pásmo nad hotovou podlahou (m), do ktorého musí prvok výškou zasahovať. */
+    /** Band above the finished floor (m) that the element must reach in height. */
   floor_band_m: 1.0,
 } as const;
 
 /**
- * NetFloorArea bez otvorov v doske (D-185 dodatok 4, návrh ako NetVolume "krytiny po celej ploche"): súbor sa nezhoduje
- * s výpočtom podľa schémy, ale zhoduje sa, keď sa otvory v doske neodčítajú (Revit plochu miestnosti o otvory v doske
- * nezmenšuje; ASR v79: schodiskové priestory 2.20 a 4.06). Žltá, nie červená: metóda je známa, nie chyba modelu.
+  * NetFloorArea without slab openings (D-185 addendum 4, a proposal like NetVolume "coverings over the whole area"): the file does not match
+  * the computation per the schema, but it matches when the slab openings are not subtracted (Revit does not reduce the space area by slab openings;
+  * ASR v79: stairwell spaces 2.20 and 4.06). Yellow, not red: the method is known, not a model error.
  */
 export const NFA_OPENINGS_RULE = {
   id: "nfa-openings@1",
   text: "sedí len bez odčítania otvorov v doske (Revit plochu miestnosti o otvory v doske nezmenšuje); schéma ich odčíta",
 } as const;
 
-// ── pravidlo konštantnosti (Samuel 1. 11. 2026: podľa textu schémy) ─────────
+// ── constancy rule (Samuel 1. 11. 2026: per the schema text) ─────────
 
 /**
- * Schéma: Height, FinishFloorHeight a FinishCeilingHeight "to be provided only if ... constant".
- * Rozdelenie miestnosti schéma umožňuje (IfcSpace CompositionType PARTIAL cez IfcRelAggregates).
- * Preto pri viacerých výškach v pôdoryse miestnosti:
- * - hodnota v súbore JE  -> červená, nález "vlastnosť nie je jednoznačná, miestnosť má N výšok"
- *   (BCF pre OCB: hodnotu odstrániť, alebo miestnosť rozdeliť na čiastkové priestory);
- * - hodnota v súbore NIE JE -> zelená ("správne neuvedená, výška nie je konštantná").
- * Žiadny vážený medián ani priemer.
+  * Schema: Height, FinishFloorHeight and FinishCeilingHeight "to be provided only if ... constant".
+  * The schema allows splitting a space (IfcSpace CompositionType PARTIAL via IfcRelAggregates).
+  * Therefore with several heights in the space footprint:
+  * - the value in the file IS present  -> red, finding "the property is not unambiguous, the space has N heights"
+  *   (BCF for OCB: remove the value, or split the space into partial spaces);
+  * - the value in the file is NOT present -> green ("correctly omitted, the height is not constant").
+  * No weighted median or average.
  */
 export const NON_CONSTANT_RULE = {
   id: "non-constant@1",
@@ -162,32 +162,32 @@ export const NON_CONSTANT_RULE = {
 } as const;
 
 /**
- * FinishFloorHeight chýba v súbore, hoci podlahovina v pôdoryse má jednu výšku (Samuel 1. 11. 2026): schéma hodnotu
- * pri konštantnej výške žiada ("to be provided only if ... constant"), preto žltá, nie sivá ani červená.
+  * FinishFloorHeight is missing in the file although the floor covering in the footprint has a single height (Samuel 1. 11. 2026): the schema
+  * asks for the value at a constant height ("to be provided only if ... constant"), hence yellow, not grey or red.
  */
 export const FFH_ABSENT_RULE = {
   id: "ffh-absent@1",
   text: "súbor FinishFloorHeight neuvádza, hoci podlahovina má v pôdoryse miestnosti jednu výšku; schéma ju pri konštantnej výške žiada",
 } as const;
 
-// ── metódy veličín IfcSpace ──────────────────────────────────────────────────
+// ── IfcSpace quantity methods ────────────────────────────────────────────
 
 export interface QuantityMethod {
-  /** Recept s verziou (mení sa pri zmene výpočtu). */
+    /** Recipe with a version (changes when the computation changes). */
   id: string;
-  /** Pset.Veličina, ktorú overuje. */
+    /** The Pset.Quantity it verifies. */
   target: string;
   kind: QuantityKind;
-  /** Čo sa z geometrie meria (pre používateľa). */
+    /** What is measured from the geometry (for the user). */
   method: string;
-  /** Doslovná definícia zo schémy. */
+    /** Verbatim definition from the schema. */
   definition: string;
   spec_ref: string;
-  /** Platí pravidlo konštantnosti. */
+    /** The constancy rule applies. */
   constant_only?: boolean;
-  /** Ako sa počíta, 1 až 2 vety po slovensky pre človeka (detail veličiny vo vieweri, D-185 UI). */
+    /** How it is computed, 1 to 2 sentences in Slovak for a person (quantity detail in the viewer, D-185 UI). */
   explanation: string;
-  /** Kontrolný výpočet: neurčuje stav veličiny, vo vieweri je pod hlavným receptom (Height: vlastné teleso). */
+    /** Cross-check computation: does not determine the quantity status, in the viewer it is under the main recipe (Height: own body). */
   check?: true;
 }
 
@@ -263,20 +263,20 @@ export const SPACE_METHODS = {
 
 export type SpaceMethodKey = keyof typeof SPACE_METHODS;
 
-// ── zobrazenie vo vieweri (D-185 UI): poradie, hlavný recept, jednotky ─────────
+// ── display in the viewer (D-185 UI): order, main recipe, units ─────────
 
 /** Rodina receptu bez verzie: `space.height.slabs@2` -> `space.height.slabs`. */
 export const recipeFamily = (recipe: string) => recipe.split("@")[0];
 
-/** Metóda registra podľa receptu (aj staršej verzie tej istej rodiny); null = recept mimo registra. */
+/** Registry method by recipe (also an older version of the same family); null = a recipe outside the registry. */
 export function methodOfRecipe(recipe: string): QuantityMethod | null {
   const fam = recipeFamily(recipe);
   return Object.values(SPACE_METHODS).find((m) => recipeFamily(m.id) === fam) ?? null;
 }
 
 /**
- * Poradie receptov veličiny: hlavný prvý (určuje stav), kontrolné (`check`) za ním. Height: `space.height.slabs` hlavný,
- * `space.height.own` kontrolný (Samuel 2. 11. 2026). Recepty mimo registra idú na koniec.
+  * Order of the quantity recipes: the main one first (determines the status), the cross-check (`check`) after it. Height: `space.height.slabs` main,
+  * `space.height.own` cross-check (Samuel 2. 11. 2026). Recipes outside the registry go last.
  */
 export function recipeRank(recipe: string): number {
   const all = Object.values(SPACE_METHODS) as QuantityMethod[];
@@ -285,7 +285,7 @@ export function recipeRank(recipe: string): number {
   return (all[i].check ? 100 : 0) + i;
 }
 
-/** Poradie veličín Qto_SpaceBaseQuantities v detaile (ako v registri). */
+/** Order of the Qto_SpaceBaseQuantities quantities in the detail (as in the registry). */
 export function targetRank(target: string): number {
   const order = [...new Set((Object.values(SPACE_METHODS) as QuantityMethod[]).map((m) => m.target))];
   const i = order.indexOf(target);
@@ -294,7 +294,7 @@ export function targetRank(target: string): number {
 
 export const UNIT_OF_KIND: Record<QuantityKind, "m" | "m2" | "m3"> = { length: "m", perimeter: "m", area: "m2", volume: "m3" };
 
-/** Číselná tolerancia v jednotke veličiny pre hodnotu zo súboru (väčšia z hraníc abs a rel, ako `withinTolerance`). */
+/** Numeric tolerance in the quantity unit for a value from the file (the larger of the abs and rel limits, as `withinTolerance`). */
 export function toleranceAbs(kind: QuantityKind, file: number): number | null {
   const t = TOLERANCES[kind];
   const parts = [t.abs, t.rel != null ? t.rel * Math.abs(file) : null].filter((x): x is number => x != null);

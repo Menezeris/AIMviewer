@@ -3,10 +3,10 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { LiveCaller } from "../live/caller";
 
 /**
- * Identita rozhovoru MCP konektora bez DB (D-159). Pri `initialize` server vráti hlavičku
- * `Mcp-Session-Id` (MCP Streamable HTTP) a klient ju posiela pri každom ďalšom volaní.
- * Hodnota je podpísaná (HMAC, kľúč `MCP_TOKEN`), takže server ju overí bez úložiska:
- * `<sid>.<meno klienta v base64url>.<podpis>`. Meno klienta je `clientInfo.name` z `initialize`.
+  * Identity of an MCP connector conversation without a DB (D-159). On `initialize` the server returns the
+  * `Mcp-Session-Id` header (MCP Streamable HTTP) and the client sends it on every further call.
+  * The value is signed (HMAC, key `MCP_TOKEN`), so the server verifies it without storage:
+  * `<sid>.<client name in base64url>.<signature>`. The client name is `clientInfo.name` from `initialize`.
  */
 
 const MAX_CLIENT = 40;
@@ -16,7 +16,7 @@ const b64url = (s: string) => Buffer.from(s, "utf8").toString("base64url");
 const sign = (body: string, secret: string) => createHmac("sha256", secret).update(body).digest("base64url").slice(0, SIG_LEN);
 
 export interface McpSession {
-  /** Náhodná identita rozhovoru (8 znakov). */
+    /** Random identity of the conversation (8 characters). */
   sid: string;
   /** `clientInfo.name` z `initialize` (napr. "claude-ai", "claude-code"). */
   client: string;
@@ -38,7 +38,7 @@ export function readSessionId(value: string | null | undefined, secret: string):
   return { sid, client: Buffer.from(client, "base64url").toString("utf8") };
 }
 
-/** `clientInfo.name` z `initialize` v požiadavke (aj v dávke); null = požiadavka nie je `initialize`. */
+/** `clientInfo.name` from `initialize` in the request (also in a batch); null = the request is not `initialize`. */
 export function initializeClientName(payload: unknown): string | null {
   const msgs = Array.isArray(payload) ? payload : [payload];
   for (const m of msgs) {
@@ -50,16 +50,16 @@ export function initializeClientName(payload: unknown): string | null {
 }
 
 /**
- * Pracovná session (Claude Code: ručná, routine, fork, eval), nie chat používateľa. Pozná ju podľa
- * mena klienta alebo User-Agent; jej príkazy idú na testovací kanál (D-159).
+  * A working session (Claude Code: manual, routine, fork, eval), not a user chat. It recognizes it by
+  * the client name or User-Agent; its commands go to the test channel (D-159).
  */
 export function isWorkClient(...names: (string | null | undefined)[]): boolean {
   return names.some((n) => !!n && /claude[-_ ]?code/i.test(n));
 }
 
 /**
- * Volajúci požiadavky: rozhovor z podpísanej hlavičky `Mcp-Session-Id` (pri `initialize` nová,
- * `issued` ide do odpovede), meno klienta a pracovná session podľa mena alebo User-Agent.
+  * Caller of the request: the conversation from the signed `Mcp-Session-Id` header (new on `initialize`,
+  * `issued` goes into the response), the client name and the working session by name or User-Agent.
  */
 export function mcpCaller(
   headers: { get(name: string): string | null },
@@ -74,7 +74,7 @@ export function mcpCaller(
   return { caller: { sid: session?.sid, client, work: isWorkClient(session?.client, ua) }, issued };
 }
 
-/** Do `mcp_call_log.client`: meno klienta a rozhovor (či chat drží jeden `sid`). */
+/** Into `mcp_call_log.client`: the client name and conversation (whether the chat keeps one `sid`). */
 export function callerLabel(c: LiveCaller | null): string | null {
   if (!c) return null;
   return `${c.client}${c.sid ? `#${c.sid}` : ""}${c.work ? " (work)" : ""}`.slice(0, 80);

@@ -8,8 +8,8 @@ import { buildPlan, type DerivationRuleRow, type DocLinkRow, type PlanRows, type
 import { currentProjectId } from "../project/context";
 
 /**
- * Načíta stav AIM pre export ICDD (D-181): len čítanie cez service_role (D-026). Payloady sa tu nesťahujú;
- * plán nesie ich verejné URL a sha256, kontajner skladá prehliadač (Vercel nevráti ~85 MB odpoveď).
+  * Loads the AIM state for the ICDD export (D-181): read-only via service_role (D-026). Payloads are not downloaded here;
+  * the plan carries their public URL and sha256, the container is assembled by the browser (Vercel does not return a ~85 MB response).
  */
 export async function fetchIcddPlan(opts: { layers?: Layer[]; extras?: Extra[]; createdAt?: string } = {}): Promise<IcddPlan> {
   const projectId = currentProjectId();
@@ -69,7 +69,7 @@ export async function fetchIcddPlan(opts: { layers?: Layer[]; extras?: Extra[]; 
 
   const docLinks: DocLinkRow[] = layers.includes("documents-elements") || layers.includes("documents-identity")
     ? await fetchAllPages((from, to) =>
-        // Len platné väzby: ukončená AIM vrstva (valid_until, napr. väzby na zaniknutú sadu dokumentov) do exportu nepatrí.
+                // Only valid links: a closed AIM layer (valid_until, e.g. links to a vanished document set) does not belong in the export.
         sb
           .from("rel_associates_document")
           .select("id, from_id, to_id, source, global_id, model, document_key")

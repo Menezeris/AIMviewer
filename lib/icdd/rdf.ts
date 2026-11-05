@@ -1,7 +1,7 @@
 /**
- * RDF trojice, deterministický zápis RDF/XML a jeho čítanie (D-181). ICDD index a linksety sú RDF/XML
- * (ISO 21597-1 ich tak vyžaduje); vlastná implementácia bez knižnice, aby generátor aj kontrola
- * kontajnera bežali v prehliadači (export a import z AIM, #350) aj v testoch.
+  * RDF triples, deterministic RDF/XML writing and reading (D-181). The ICDD index and linksets are RDF/XML
+  * (ISO 21597-1 requires them to be); own implementation without a library so that the generator and the container check
+  * run in the browser (export and import from AIM, #350) as well as in tests.
  */
 
 import { escapeXml, parseXml, type XmlElement, type XmlNode } from "./xml";
@@ -40,9 +40,9 @@ export function tripleKey(tr: Triple): string {
   return `${termKey(tr.s)} <${tr.p}> ${termKey(tr.o)}`;
 }
 
-// ---------------------------------------------------------------- zápis
+// ---------------------------------------------------------------- writing
 
-/** Rozdelí IRI na menný priestor a lokálne meno (za posledným # alebo /). */
+/** Splits an IRI into a namespace and a local name (after the last # or /). */
 function splitIri(v: string): [string, string] {
   const h = v.lastIndexOf("#");
   const cut = h >= 0 ? h : v.lastIndexOf("/");
@@ -53,8 +53,8 @@ function splitIri(v: string): [string, string] {
 }
 
 /**
- * Zapíše trojice ako RDF/XML. Výstup je deterministický: subjekty, predikáty a objekty zoradené,
- * duplicity preč, prefixy v pevnom poradí (zadané + automatické `ns1`... podľa abecedy IRI).
+  * Writes triples as RDF/XML. The output is deterministic: subjects, predicates and objects sorted,
+  * duplicates removed, prefixes in a fixed order (given + automatic `ns1`... by IRI alphabet).
  */
 export function writeRdfXml(triples: Triple[], prefixes: Record<string, string>): string {
   const ns = new Map<string, string>(); // iri -> prefix
@@ -105,7 +105,7 @@ export function writeRdfXml(triples: Triple[], prefixes: Record<string, string>)
   return out.join("\n");
 }
 
-// ---------------------------------------------------------------- čítanie
+// ---------------------------------------------------------------- reading
 
 interface Ctx {
   ns: Record<string, string>;
@@ -117,7 +117,7 @@ function hasScheme(v: string): boolean {
   return /^[A-Za-z][A-Za-z0-9+.-]*:/.test(v);
 }
 
-/** Rozlíši relatívne IRI voči základu (stačí pre tvary v ICDD: "", "#x", absolútne, relatívna cesta). */
+/** Resolves a relative IRI against a base (enough for the shapes in ICDD: "", "#x", absolute, relative path). */
 export function resolveIri(ref: string, base: string): string {
   if (hasScheme(ref)) return ref;
   const b = base.split("#")[0];
@@ -132,15 +132,15 @@ export function resolveIri(ref: string, base: string): string {
 }
 
 /**
- * Prečíta RDF/XML (striped syntax: rdf:about / rdf:ID / rdf:nodeID, typové elementy, rdf:resource,
- * rdf:datatype, xml:lang, xml:base, parseType Resource / Collection / Literal, vlastnostné atribúty).
+  * Reads RDF/XML (striped syntax: rdf:about / rdf:ID / rdf:nodeID, type elements, rdf:resource,
+  * rdf:datatype, xml:lang, xml:base, parseType Resource / Collection / Literal, property attributes).
  */
 let parseCounter = 0;
 
 export function parseRdfXml(text: string, docBase = ""): Triple[] {
   const root = parseXml(text);
   const out: Triple[] = [];
-  // prázdne uzly sú jedinečné naprieč volaniami: index, linksety a ontológie sa spájajú do jedného grafu
+    // blank nodes are unique across calls: the index, linksets and ontologies are merged into one graph
   const doc = ++parseCounter;
   let bn = 0;
   const fresh = (): Term => ({ t: "bnode", v: `d${doc}b${++bn}` });
@@ -268,7 +268,7 @@ function serializeChildren(nodes: XmlNode[]): string {
     .join("");
 }
 
-/** Index nad trojicami pre kontroly (typy, hodnoty vlastností). */
+/** Index over triples for the checks (types, property values). */
 export class Graph {
   readonly triples: Triple[];
   private bySP = new Map<string, Term[]>();

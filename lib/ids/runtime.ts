@@ -13,10 +13,10 @@ import { supabaseIdsStore } from "./store";
 import { execIdsTool, type IdsOpenOutcome, type IdsToolResult, type IdsViewerDeps } from "./tools";
 import { currentProjectId } from "../project/context";
 
-/** Čakanie na otvorenie IDS vo vieweri: klient hosta najprv stiahne XML z route, potom ho pošle forku. */
+/** Waiting for IDS to open in the viewer: the host client first downloads the XML from the route, then sends it to the fork. */
 const OPEN_TIMEOUT_MS = ACK_TIMEOUT_MS * 2;
 
-/** `ids_open` na živý kanál (D-162) a potvrdenie `APPLIED`; vzor `liveCapture` z pohľadov (D-161). */
+/** `ids_open` to the live channel (D-162) and confirmation `APPLIED`; pattern `liveCapture` from views (D-161). */
 async function liveOpen(req: IdsOpenReq): Promise<IdsOpenOutcome> {
   const channel = liveChannel();
   if (!channel) return { ok: false, reason: "živý viewer nie je nastavený (LIVE_CHANNEL)" };
@@ -39,7 +39,7 @@ async function liveOpen(req: IdsOpenReq): Promise<IdsOpenOutcome> {
   return { ok: true, issues: applied.issues };
 }
 
-/** Surová odpoveď `view_state` (D-085); string = prečo sa nedala prečítať. */
+/** Raw `view_state` response (D-085); string = why it could not be read. */
 async function liveViewState(): Promise<unknown> {
   const channel = liveChannel();
   if (!channel) return "živý viewer nie je nastavený (LIVE_CHANNEL)";
@@ -51,7 +51,7 @@ async function liveViewState(): Promise<unknown> {
 
 const viewer: IdsViewerDeps = { open: liveOpen, viewState: liveViewState };
 
-/** Produkčné závislosti toolu `ids_document` (D-162): DB a živý viewer; import je lenivý z MCP route. */
+/** Production dependencies of the `ids_document` tool (D-162): DB and live viewer; the import is lazy from the MCP route. */
 export function runIdsTool(name: string, args: Record<string, unknown>): Promise<IdsToolResult> {
   return execIdsTool(name, args, { store: supabaseIdsStore(currentProjectId()), viewer, lib: supabaseIdsLibraryStore(currentProjectId()) });
 }

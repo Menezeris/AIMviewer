@@ -6,11 +6,11 @@ import type { SavedViewStore } from "./store";
 import { isWireViewpoint, wireOfRow } from "./wire";
 
 /**
- * Uložené pohľady viewera (D-122, od D-161 pohľady z panela Presentation), len v MCP konektore. Zápis je tool
- * `saved_view` (save | rename | delete); zoznam číta `get_viewer_state(saved_views)` a obnovu robí
- * `set_view_mode(view)`, lebo to sú existujúce tooly na čítanie a pohľad (D-114). `save` pošle viewera
- * `VIEW_CAPTURE` (uloží ako tlačidlo v paneli, zápis do DB urobí host cez route), rename a delete zapíše
- * server a viewer dostane zoznam znova. Závislosti (DB, živý viewer) sú v `runtime.ts`.
+  * Saved views of the viewer (D-122, since D-161 views from the Presentation panel), MCP connector only. The write is the tool
+  * `saved_view` (save | rename | delete); the list is read by `get_viewer_state(saved_views)` and the restore is done by
+  * `set_view_mode(view)`, because those are existing tools for reading and viewing (D-114). `save` sends the viewer
+  * `VIEW_CAPTURE` (saves as a button in the panel, the DB write is done by the host via the route), rename and delete are written by
+  * the server and the viewer gets the list again. Dependencies (DB, live viewer) are in `runtime.ts`.
  */
 
 export const DEFAULT_VIEW_AUTHOR = "Claude (MCP)";
@@ -19,7 +19,7 @@ const MAX_TEXT = 2000;
 
 export const SAVED_VIEW_ACTIONS = ["save", "rename", "delete"] as const;
 
-/** Parametre z D-132, ktoré D-161 nepozná (druh pohľadu, zámok, podklad); prijmú sa a ignorujú s poznámkou. */
+/** Parameters from D-132 that D-161 does not know (view kind, lock, underlay); they are accepted and ignored with a note. */
 const IGNORED_ARGS = ["view_type", "locked", "underlay_document_id", "underlay_page"] as const;
 
 export const SAVED_VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
@@ -53,24 +53,24 @@ export const SAVED_VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
 
 export const SAVED_VIEW_TOOL_NAMES: ReadonlySet<string> = new Set(SAVED_VIEW_TOOL_DEFINITIONS.map((t) => t.name));
 
-/** Výsledok `VIEW_CAPTURE` vo vieweri: `view` je uložený pohľad, `null` = viewer nič neuložil, `undefined` = starší viewer. */
+/** Result of `VIEW_CAPTURE` in the viewer: `view` is the saved view, `null` = the viewer saved nothing, `undefined` = an older viewer. */
 export type CaptureOutcome =
   | { ok: true; view: { id: string; name?: string; objects?: number } | null | undefined; issues: string[] }
   | { ok: false; reason: string };
 
 export interface SavedViewDeps {
   store: SavedViewStore;
-  /** Pošle viewera `VIEW_CAPTURE` a počká na potvrdenie (`APPLIED.state.view`). */
+    /** Sends the viewer `VIEW_CAPTURE` and waits for the confirmation (`APPLIED.state.view`). */
   capture: (req: { name: string; capture_id: string }) => Promise<CaptureOutcome>;
-  /** Povie otvorenému vieweru, aby načítal pohľady z DB znova (po premenovaní, zmazaní, prepísaní). */
+    /** Tells the open viewer to load the views from the DB again (after a rename, delete, overwrite). */
   notifyChanged: () => Promise<void>;
-  /** Surová odpoveď `view_state` z otvoreného viewera (starší viewer bez `VIEW_CAPTURE`); string = prečo sa nedala prečítať. */
+    /** Raw `view_state` response from the open viewer (an older viewer without `VIEW_CAPTURE`); string = why it could not be read. */
   viewState: () => Promise<unknown>;
-  /** Čakanie na zápis hosta (testy ho skracujú). */
+    /** Waiting for the host write (tests shorten it). */
   sleep?: (ms: number) => Promise<void>;
   newCaptureId?: () => string;
   revisions: () => Promise<Record<string, number>>;
-  /** IFC GUID podlažia -> object_ref/názov v AIM; null = nepoznáme. */
+    /** IFC GUID of a storey -> object_ref/name in AIM; null = unknown. */
   storeyLabel: (guid: string) => Promise<string | null>;
   now: () => Date;
 }
@@ -97,7 +97,7 @@ async function loadView(deps: Pick<SavedViewDeps, "store">, raw: unknown): Promi
   );
 }
 
-/** Zápis hosta z viewera ide cez route po potvrdení `APPLIED`; počká sa naň najviac ~4 s. */
+/** The host write from the viewer goes via the route after the `APPLIED` confirmation; wait for it at most ~4 s. */
 const WRITE_POLL_MS = 300;
 const WRITE_POLL_TRIES = 14;
 
@@ -111,7 +111,7 @@ async function waitForRow(deps: SavedViewDeps, id: string): Promise<SavedViewRow
   return null;
 }
 
-/** Starší viewer bez `VIEW_CAPTURE`: stav z `view_state` do riadku v tvare D-122 (len kamera, rez, výber, skrytie, izolácia). */
+/** An older viewer without `VIEW_CAPTURE`: the state from `view_state` into a row in the D-122 shape (only camera, section, selection, hiding, isolation). */
 async function saveLegacy(args: Record<string, unknown>, deps: SavedViewDeps, existing: SavedViewRow | null) {
   const name = nameOf(args.name);
   const raw = await deps.viewState();
@@ -160,7 +160,7 @@ async function save(args: Record<string, unknown>, deps: SavedViewDeps) {
         "Zápis z viewera je vypnutý (env brána VIEWS_WRITE_ENABLED) alebo zlyhal; po obnovení stránky pohľad zmizne.",
     );
   }
-  // Prepísanie: starý pohľad zmizne a nový dostane jeho meno (host pri zápise meno kvôli kolízii doplnil príponou).
+    // Overwrite: the old view disappears and the new one gets its name (the host added a suffix at write because of a collision).
   const replaced = existing && existing.id !== written.id;
   if (replaced) await deps.store.remove(existing.id);
   const author = text(args.author, 200) || DEFAULT_VIEW_AUTHOR;
@@ -223,7 +223,7 @@ export async function execSavedViewTool(
   }
 }
 
-/** `get_viewer_state(saved_views=true)`: zoznam z DB, aj bez otvoreného viewera; poradie ako v páse Presentation. */
+/** `get_viewer_state(saved_views=true)`: a list from the DB, also without an open viewer; order as in the Presentation strip. */
 export async function listSavedViews(deps: Pick<SavedViewDeps, "store">) {
   const [rows, last] = await Promise.all([deps.store.list(), deps.store.last()]);
   const views = [...rows].sort((a, b) => {
@@ -240,7 +240,7 @@ export async function listSavedViews(deps: Pick<SavedViewDeps, "store">) {
   };
 }
 
-/** `set_view_mode(saved_view)`: plán obnovy a zápis "Posledný pohľad". */
+/** `set_view_mode(saved_view)`: restore plan and the write of "Posledný pohľad" (last view). */
 export async function restoreSavedView(input: Record<string, unknown>, deps: Pick<SavedViewDeps, "store" | "now">): Promise<ViewPlan> {
   const row = await loadView(deps, input.saved_view);
   const { plan, restored } = planRestore(row, input.section_offset_m);

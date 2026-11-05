@@ -1,5 +1,5 @@
 /**
- * Zahriatie IFC motora na studenej inštancii (D-135): predčíta len rozhovor, ktorý motor používa.
+  * Warming of the IFC engine on a cold instance (D-135): preloads only for a conversation that uses the engine.
  */
 import { describe, expect, it } from "vitest";
 

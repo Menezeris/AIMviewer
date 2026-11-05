@@ -55,7 +55,7 @@ describe("saved_view (D-161)", () => {
     const again = await run(deps, { action: "save", name: "rez a" });
     expect(again.isError).toBe(true);
     expect(again.text).toContain("overwrite=true");
-    // Druhé uloženie vo vieweri dostane nové id; host mu pre kolíziu mena pridá príponu.
+        // A second save in the viewer gets a new id; the host adds a suffix to it because of the name collision.
     const NEW_ID = "7c1d2e3f-0000-4000-8000-00000000abcd";
     deps.capture = async (req) => {
       deps.captured.push(req);
@@ -135,7 +135,7 @@ describe("saved_view (D-161)", () => {
     const lastWire = (last?.viewpoint as unknown as { section: { planes: { coordinate: number }[] } }).section;
     expect(lastWire.planes[0].coordinate).toBe(3.2);
     expect(deps.store.rows.find((x) => x.kind === "saved")?.last_used_at).toBe("2026-10-20T12:30:00.000Z");
-    // "ako minule, ale o meter nižšie": posledný pohľad aktivuje pôvodný pohľad podľa `viewpoint.id`.
+        // "as last time, but a meter lower": the last view activates the original view by `viewpoint.id`.
     const again = await restoreSavedView({ saved_view: "Posledný pohľad", section_offset_m: -1 }, deps);
     expect(parseOps(again.ops[0]).map(opToBridgeMessage)).toEqual([{ type: "VIEW_ACTIVATE", id: CAPTURED_ID }]);
     expect(again.ops[1]).toBe("section:y~c=2.2~g=0:");
@@ -152,7 +152,7 @@ describe("saved_view (D-161)", () => {
     const noCoord = { ...base, coordinate: undefined };
     await saveWire(deps.store, wireView({ id: "7c1d2e3f-0000-4000-8000-00000000abce", name: "Percento", section: { planes: [noCoord], active: 0 } }), {});
     await expect(restoreSavedView({ saved_view: "Percento", section_offset_m: -1 }, deps)).rejects.toThrow("súradnicu");
-    // bez posunu sa pohľad otvorí aj tak
+        // without an offset the view opens anyway
     expect((await restoreSavedView({ saved_view: "Box" }, deps)).ops).toHaveLength(1);
   });
 

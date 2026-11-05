@@ -84,7 +84,7 @@ const payloads = () =>
 
 const build = (p = plan()) => assembleIcdd({ plan: p, payloads: payloads(), ontologies });
 
-/** Prebalí ZIP s úpravou súborov (mutácie). */
+/** Repackages the ZIP with file modifications (mutations). */
 function mutate(zip: Uint8Array, fn: (files: Record<string, Uint8Array>) => void): Uint8Array {
   const files = unzipSync(zip);
   fn(files);
@@ -139,7 +139,7 @@ describe("ICDD export (D-181)", () => {
     expect(typesOf(ls["derived-spatial"])).toEqual([[`${LSNS}DirectedBinaryLink`, `${DEFAULT_AIM_NAMESPACE}IsReferencedInSpatialStructure`]]);
     expect(typesOf(ls.federation)).toEqual([[`${ELSNS}IsIdenticalTo`]]);
     for (const t of typesOf(ls["documents-elements"])) expect(t).toEqual([`${ELSNS}IsElaboratedBy`]);
-    // kontrola voči ontológiám ISO aj roundtrip s tým prejdú
+        // the ISO ontology check and the roundtrip both pass with it
     const report = validateIcdd(build());
     expect(report.ok).toBe(true);
     expect(compareStates(stateFromContainer(report.contents!, DEFAULT_AIM_NAMESPACE), stateFromPlan(plan())).same).toBe(true);
@@ -199,7 +199,7 @@ describe("ICDD kontrola - mutácie ju musia zhodiť", () => {
   it("GlobalId, ktorý v pribalenom IFC nie je", () => {
     const z = mutate(build(), (f) => {
       f["Payload documents/ASR_v079.ifc"] = ifc([`#3=IFCBUILDINGSTOREY('${G.storeyA}',$,'1NP',$,$,$,$,$,.ELEMENT.,0.);`]);
-      // checksum by tiež spadol; prepočítame ho v indexe, aby sa ukázala práve referenčná integrita
+          // the checksum would also fail; we recompute it in the index so that precisely the reference integrity shows up
       const idx = strFromU8(f["index.rdf"]).replace(sha256(ASR), sha256(f["Payload documents/ASR_v079.ifc"]));
       f["index.rdf"] = strToU8(idx);
     });

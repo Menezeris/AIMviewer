@@ -1,7 +1,7 @@
 /**
- * Export a import ICDD v prehliadači (D-181, Samuel 30. 10.: stiahnuť do PC, roundtrip v prvej verzii).
- * Plán dá host (`GET /api/icdd`), payloady sa stiahnu z verejných bucketov (IFC z archívu revízie, D-135),
- * overí sa sha256 a kontajner sa zloží lokálne. Kontrola načíta `.icdd`, overí ho a porovná so stavom AIM.
+  * ICDD export and import in the browser (D-181, Samuel 30. 10.: download to the PC, roundtrip in the first version).
+  * The plan is given by the host (`GET /api/icdd`), the payloads are downloaded from public buckets (IFC from the revision archive, D-135),
+  * the sha256 is verified and the container is assembled locally. The check loads the `.icdd`, validates it and compares it with the AIM state.
  */
 
 import { gunzipSync } from "fflate";
@@ -28,7 +28,7 @@ async function getBytes(fetchFn: typeof fetch, url: string): Promise<Uint8Array>
   return new Uint8Array(await r.arrayBuffer());
 }
 
-/** Rozbalí gzip, ak ho server už nerozbalil sám (Content-Encoding). */
+/** Unpacks gzip if the server has not already unpacked it itself (Content-Encoding). */
 export function maybeGunzip(data: Uint8Array): Uint8Array {
   return data.length > 2 && data[0] === 0x1f && data[1] === 0x8b ? gunzipSync(data) : data;
 }
@@ -48,11 +48,11 @@ export interface ExportResult {
   filename: string;
   bytes: Uint8Array;
   report: ValidationReport;
-  /** Súbory navyše mimo `.icdd` (xlsx výpis), stiahnu sa vedľa kontajnera. */
+    /** Extra files outside the `.icdd` (xlsx listing), downloaded next to the container. */
   sideFiles: { filename: string; mime: string; bytes: Uint8Array }[];
 }
 
-/** Zloží kontajner a pred odovzdaním ho skontroluje tou istou kontrolou ako import. */
+/** Assembles the container and checks it with the same check as the import before handing it over. */
 export async function exportIcdd(
   progress: Progress = () => {},
   fetchFn: typeof fetch = fetch,
@@ -79,11 +79,11 @@ export interface CheckResult {
   report: ValidationReport;
   diff: RoundtripDiff | null;
   versionID: string | null;
-  /** Požiadavka na import (bez obsahu payloadov), ak sa kontajner dal prečítať. */
+    /** Import request (without payload contents), if the container could be read. */
   request: ImportRequest | null;
 }
 
-/** Import späť: kontrola kontajnera a porovnanie s aktuálnym stavom AIM (bez zápisu do DB). */
+/** Import back: container check and comparison with the current AIM state (no DB write). */
 export async function checkIcdd(
   bytes: Uint8Array,
   progress: Progress = () => {},
@@ -103,7 +103,7 @@ export async function checkIcdd(
 
 export interface ImportResponse {
   preview: ImportPreview;
-  /** id uloženého náhľadu v `icdd_imports`; null = zápis je vypnutý (ICDD_IMPORT_ENABLED). */
+    /** id of the saved preview in `icdd_imports`; null = writing is off (ICDD_IMPORT_ENABLED). */
   importId: string | null;
   writeEnabled: boolean;
   record?: { id: string; written_ids: string[]; closed_ids: string[]; applied_at: string };
@@ -116,12 +116,12 @@ async function postImport(fetchFn: typeof fetch, body: unknown): Promise<ImportR
   return out as ImportResponse;
 }
 
-/** Náhľad importu (dry-run): čo sa zapíše, čo je bez zmeny a nálezy. Pri zapnutej bráne sa náhľad uloží. */
+/** Import preview (dry-run): what gets written, what is unchanged, and findings. With the gate on, the preview is saved. */
 export function previewImport(request: ImportRequest, fetchFn: typeof fetch = fetch): Promise<ImportResponse> {
   return postImport(fetchFn, { action: "preview", request });
 }
 
-/** Zápis importu za bránou; pri zmene stavu AIM od náhľadu server vráti 409. */
+/** Import write behind the gate; if the AIM state changed since the preview, the server returns 409. */
 export function applyImport(request: ImportRequest, importId: string, aimStateSha256: string, fetchFn: typeof fetch = fetch): Promise<ImportResponse> {
   return postImport(fetchFn, { action: "apply", request, importId, aimStateSha256 });
 }

@@ -10,10 +10,10 @@ import { buildFixture, FIXTURE, FIXTURE_LINKS } from "./test-fixture";
 import { validateIcdd } from "./validate";
 
 /**
- * Testovací kontajner pre audit v Pythone (`etl/icdd_audit.py`, `etl/tests/test_icdd_audit.py`) a väzby, ako ich číta
- * import (`aim-small.links.json`, pytest porovná s vlastným čítaním: import roundtrip naprieč implementáciami).
- * Súbory sú v repe, aby pytest nepotreboval Node; tento test stráži, že zodpovedajú aktuálnemu builderu.
- * Obnova po zmene exportu: `ICDD_FIXTURE_UPDATE=1 npx vitest run lib/icdd/audit-fixture.test.ts`.
+  * Test container for the audit in Python (`etl/icdd_audit.py`, `etl/tests/test_icdd_audit.py`) and for the links as the
+  * import reads them (`aim-small.links.json`, pytest compares with its own reading: an import roundtrip across implementations).
+  * The files are in the repo so that pytest does not need Node; this test guards that they match the current builder.
+  * Regenerate after an export change: `ICDD_FIXTURE_UPDATE=1 npx vitest run lib/icdd/audit-fixture.test.ts`.
  */
 describe("testovací kontajner pre etl/icdd_audit.py", () => {
   it("prejde kontrolou exportu a zodpovedá súboru v etl/tests/fixtures", () => {

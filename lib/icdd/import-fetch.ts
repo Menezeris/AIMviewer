@@ -8,8 +8,8 @@ import { fetchIcddPlan } from "./plan-fetch";
 import { currentProjectId } from "../project/context";
 
 /**
- * Stav AIM pre import ICDD (D-181 dodatok "import"): len čítanie cez service_role (D-026). Zápis robí
- * `applyIcddImport` cez RPC `icdd_apply_import` (pripravená migrácia `20261101140000_icdd_imports.sql`).
+  * AIM state for the ICDD import (D-181 addendum "import"): read-only via service_role (D-026). The write is done by
+  * `applyIcddImport` via the RPC `icdd_apply_import` (prepared migration `20261101140000_icdd_imports.sql`).
  */
 
 const AIM_LAYER = (source: string | null) => !/^etl(:|$)/.test(source ?? ""); // = rel_is_aim_layer v DB
@@ -146,7 +146,7 @@ const row = (req: ImportRequest, p: ImportPreview) => ({
   imported_by: process.env.ICDD_IMPORT_USER?.trim() || "aim",
 });
 
-/** Uloží náhľad (`checked`) do `icdd_imports`; vráti id záznamu. */
+/** Saves the preview (`checked`) into `icdd_imports`; returns the record id. */
 export async function saveImportPreview(req: ImportRequest, p: ImportPreview): Promise<string> {
   const sb = getSupabaseAdmin();
   const r = must("icdd_imports", await sb.from("icdd_imports").insert({ ...row(req, p), project_id: currentProjectId() }).select("id").single()) as { id: string };
@@ -156,8 +156,8 @@ export async function saveImportPreview(req: ImportRequest, p: ImportPreview): P
 export class ImportConflictError extends Error {}
 
 /**
- * Zápis importu za bránou (volá route len pri `ICDD_IMPORT_ENABLED=true`): prepočíta náhľad z tej istej požiadavky,
- * overí, že kontajner a stav AIM sú tie isté ako pri uloženom náhľade, a zapíše zmeny cez RPC v jednej transakcii.
+  * Import write behind the gate (the route calls it only with `ICDD_IMPORT_ENABLED=true`): recomputes the preview from the same request,
+  * verifies that the container and the AIM state are the same as at the saved preview, and writes the changes via the RPC in one transaction.
  */
 export async function applyIcddImport(importId: string, aimState: string, req: ImportRequest) {
   const projectId = currentProjectId();

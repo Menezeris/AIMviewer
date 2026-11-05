@@ -1,8 +1,8 @@
 /**
- * Plán kontajnera ICDD zo stavu AIM (D-181, #350). Čistá funkcia nad riadkami DB, aby sa dala testovať;
- * načítanie robí `plan-fetch.ts` (server). Pravidlo D-129 a D-183: payload = kontajnery revízií (IFC z archívu,
- * PDF z bucketu, sha256), linkset = AIM vrstva (odvodené väzby, väzby dokument-prvok z AIM, párovanie podlaží)
- * a kvôli čitateľnosti bez parsovania IFC aj väzba dokument-prvok zo súboru (s pôvodom `ifc:ASR v79`).
+  * ICDD container plan from the AIM state (D-181, #350). A pure function over DB rows so it can be tested;
+  * loading is done by `plan-fetch.ts` (server). Rule D-129 and D-183: payload = revision containers (IFC from the archive,
+  * PDF from the bucket, sha256), linkset = AIM layer (derived links, document-element links from AIM, storey pairing)
+  * and, for readability without parsing IFC, also the document-element link from the file (with origin `ifc:ASR v79`).
  */
 
 import { DEFAULT_AIM_NAMESPACE, EXTRAS, LAYER_OF, LAYERS, type Extra, type IcddLink, type IcddPayload, type IcddPlan, type Layer } from "./model";
@@ -42,13 +42,13 @@ export interface ObjectRow {
   object_ref: string | null;
 }
 export interface DocLinkRow {
-  /** `relationships.id` (AIM vrstva) alebo id riadku pohľadu (väzba zo súboru IFC). */
+    /** `relationships.id` (AIM layer) or the view row id (a link from an IFC file). */
   id?: string | null;
   from_id: string | null;
   to_id: string | null;
   source: string | null;
   global_id: string | null;
-  /** Pri väzbe zo súboru IFC: model a kľúč dokumentu v IFC (`IfcDocumentInformation:<Identification>`). */
+    /** For a link from an IFC file: the model and the document key in the IFC (`IfcDocumentInformation:<Identification>`). */
   model?: string | null;
   document_key?: string | null;
 }
@@ -69,19 +69,19 @@ export interface StoreyMapRow {
 export interface DerivationRuleRow {
   id: string;
   source: string | null;
-  /** `models` posledného úspešného behu pravidla (`derivation_runs`). */
+    /** `models` of the last successful run of the rule (`derivation_runs`). */
   models: Record<string, number> | null;
 }
 
 export interface PlanRows {
   storageBase: string;
   modelRevisions: ModelRevisionRow[];
-  /** Revízia kópie, z ktorej je mapa GlobalId -> model (`ifc_rev_current`). */
+    /** Revision of the copy from which the GlobalId -> model map is built (`ifc_rev_current`). */
   copyRevisions: { model: string; revision: number }[];
   containerRevisions: ContainerRevisionRow[];
   documents: DocumentRow[];
   objects: ObjectRow[];
-  /** GlobalId -> model, z kópie aktuálnej revízie (D-183 K2). */
+    /** GlobalId -> model, from the copy of the current revision (D-183 K2). */
   guidModel: Map<string, string>;
   docLinks: DocLinkRow[];
   spatialLinks: SpatialLinkRow[];
@@ -212,8 +212,8 @@ export function buildPlan(rows: PlanRows, opts: PlanOptions): IcddPlan {
   };
 
   const links: IcddLink[] = [];
-  // Väzba zo súboru IFC (`source ifc:*`) ostáva len v pribalenom IFC (D-181 bod 3, Samuel 31. 10.: "ide mi len o to,
-  // aby sme neduplikovali zdroj pravdy"); do linksetu ide identita dokumentu IFC <-> PDF (documents-identity).
+    // A link from an IFC file (`source ifc:*`) stays only in the bundled IFC (D-181 point 3, Samuel 31. 10.: "I only care that
+    // we do not duplicate the source of truth"); the linkset gets the identity of the IFC <-> PDF document (documents-identity).
   const resolveDoc = (toId: string) => {
     let target = docPayload.get(toId);
     let page: number | null = null;
@@ -280,7 +280,7 @@ export function buildPlan(rows: PlanRows, opts: PlanOptions): IcddPlan {
         from,
         to: { payload: target.id, page },
         source: r.source,
-        // revízia modelu prvku, nad ktorou väzba platí; import pri inej revízii hlási konflikt (D-181 dodatok "import")
+                // revision of the element's model over which the link holds; at another revision the import reports a conflict (D-181 addendum "import")
         basedOn: `${model}=${current[model]}`,
         ifcRelationship: "IfcRelAssociatesDocument",
       });
@@ -341,7 +341,7 @@ export function buildPlan(rows: PlanRows, opts: PlanOptions): IcddPlan {
     }
   }
 
-  // Vrstva bez väzieb sa nevydá (Samuel 1. 11., audit ICDD): prázdny linkset v indexe by tvrdil väzby, ktoré nie sú.
+    // A layer without links is not issued (Samuel 1. 11., ICDD audit): an empty linkset in the index would claim links that do not exist.
   const emitted = layers.filter((l) => links.some((k) => LAYER_OF[k.kind] === l));
   for (const l of layers) {
     if (emitted.includes(l)) continue;

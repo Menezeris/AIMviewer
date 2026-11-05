@@ -34,7 +34,7 @@ describe("zápis pohľadov z viewera (D-161)", () => {
     expect(await saveWire(store, wireView({ id: ID2, name: "basket 1" }), {})).toEqual({ name: "basket 1 2", renamed: true });
     expect(await saveWire(store, wireView({ id: ID3, name: "BASKET 1" }), {})).toEqual({ name: "BASKET 1 3", renamed: true });
     expect(await freeName(store, "Posledný pohľad")).toBe("Posledný pohľad 2");
-    // premenovanie na vlastné meno nie je kolízia
+        // renaming to your own name is not a collision
     expect(await freeName(store, "Basket 1", CAPTURED_ID)).toBe("Basket 1");
   });
 

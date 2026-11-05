@@ -87,12 +87,12 @@ describe("ifc_ids_validate nad IDS v DB (D-162)", () => {
       ids_title: "Podlažia z chatu",
       ids_version: "0.1",
       ids_source: "ids_document:CHAT-PODLAZIA@v1",
-      // model bez archívu revízie: podpis vstupu neznámy (D-183), DB ho ukáže ako stale NULL
+      // model without a revision archive: input signature unknown (D-183), the DB shows it as stale NULL
       model_revisions: {},
     });
     expect(store.runs[0].results_total).toBe(store.results.length);
     expect(store.runs[0].results_failed).toBe(store.results.filter((x) => x.status === "fail").length);
-    // 2 podlažia (1 chyba v názve), povinná špecifikácia zón bez prvku = riadok bez ifc_guid
+        // 2 storeys (1 error in the name), a required zone specification without an element = a row without ifc_guid
     const storeyRows = store.results.filter((x) => x.spec_identifier === "IU-O-storey");
     expect(storeyRows).toHaveLength(2);
     expect(storeyRows.map((x) => x.status).sort()).toEqual(["fail", "pass"]);

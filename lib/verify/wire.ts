@@ -1,12 +1,12 @@
 /**
- * Tvar overenia výmer pre viewer (D-185 UI, fork `apps/viewer/src/aim/verify-protocol.ts`, záväzný): z riadkov
- * `v_verification_latest` alebo z čerstvého behu poskladá `VerifyElementWire` jedného prvku. Čistá logika bez DB.
+  * Shape of the quantity verification for the viewer (D-185 UI, fork `apps/viewer/src/aim/verify-protocol.ts`, binding): from the rows of
+  * `v_verification_latest` or a fresh run it assembles the `VerifyElementWire` of one element. Pure logic without the DB.
  *
- * Pravidlá (návrh fork PR #227, časť 4):
- * - na veličinu a rodinu receptu (`space.height.slabs`) len najvyšší `registry_version` (potom najnovší beh);
- * - hlavný recept prvý (register: `check` = kontrolný, Height: `space.height.slabs` hlavný), stav veličiny = hlavný recept;
- * - veličiny, ktoré v súbore nie sú (`file_value` null), sa vynechajú;
- * - `spec.url` z `spec_ref`, `ref` buniek = `object_ref` výskytu podľa GUID (doplní volajúci mapou).
+  * Rules (fork PR #227 proposal, part 4):
+  * - per quantity and recipe family (`space.height.slabs`) only the highest `registry_version` (then the newest run);
+  * - the main recipe first (registry: `check` = cross-check, Height: `space.height.slabs` main), the quantity status = the main recipe;
+  * - quantities that are not in the file (`file_value` null) are omitted;
+  * - `spec.url` from `spec_ref`, the cell `ref` = the occurrence `object_ref` by GUID (the caller fills it in with a map).
  */
 
 import {
@@ -32,7 +32,7 @@ export interface VerifyCellWire {
   unit: string;
   global_id?: string;
   ref?: string;
-  /** Odvodená bunka: výmera toho istého prvku, ktorej hodnotu bunka nesie. */
+    /** Derived cell: a quantity of the same element whose value the cell carries. */
   quantity?: string;
 }
 
@@ -85,7 +85,7 @@ export interface VerifyRunAllWire {
   counts: Record<VerifyStatus, number>;
 }
 
-/** Riadok výsledku receptu: stĺpce `v_verification_latest` (aj čerstvý beh v tom istom tvare). */
+/** Row of a recipe result: columns of `v_verification_latest` (also a fresh run in the same shape). */
 export interface VerifyRow {
   model: string;
   revision: number | null;
@@ -110,10 +110,10 @@ export interface VerifyRow {
   inputs?: VerificationInputs | null;
 }
 
-/** Stránka hosta "Ako to funguje?" (D-185: recepty, stavy, tolerancie). */
+/** Host page "Ako to funguje?" (how does it work; D-185: recipes, statuses, tolerances). */
 export const VERIFY_HELP_HREF = "/overenie";
 
-/** Kontrola v ribbone viewera (zatiaľ jediná). */
+/** Check in the viewer ribbon (the only one so far). */
 export const VERIFY_CHECK_SPACES = "space_quantities";
 
 const SPEC_RE = /^([^@\s]+)@([0-9a-f]{7,40}):(\S+?\.xml)#(\w+)$/i;
@@ -130,7 +130,7 @@ export function specLink(specRef: string | null | undefined): { label: string; u
 const later = (a: VerifyRow, b: VerifyRow) =>
   b.registry_version - a.registry_version || (b.checked_at > a.checked_at ? 1 : b.checked_at < a.checked_at ? -1 : 0);
 
-/** Na veličinu a rodinu receptu najvyšší `registry_version`, pri zhode najnovší beh. */
+/** Per quantity and recipe family the highest `registry_version`, on a tie the newest run. */
 export function pickLatestRecipes(rows: readonly VerifyRow[]): VerifyRow[] {
   const best = new Map<string, VerifyRow>();
   for (const r of rows) {
@@ -175,14 +175,14 @@ function recipeWire(r: VerifyRow, refs: ReadonlyMap<string, string>): VerifyReci
 }
 
 export interface ElementWireOptions {
-  /** Aktuálna revízia modelu (`model_revisions.is_current`); null = neznáma (stale len z pohľadu). */
+    /** Current model revision (`model_revisions.is_current`); null = unknown (stale only from the view). */
   currentRevision: number | null;
-  /** GUID -> `object_ref` výskytu (bunky a kotvy). */
+    /** GUID -> `object_ref` of the occurrence (cells and anchors). */
   refs?: ReadonlyMap<string, string>;
   helpHref?: string;
 }
 
-/** Riadky jedného prvku -> `VerifyElementWire`; null, keď prvok nemá žiadny riadok. */
+/** Rows of one element -> `VerifyElementWire`; null when the element has no row. */
 export function elementWire(rows: readonly VerifyRow[], opts: ElementWireOptions): VerifyElementWire | null {
   if (rows.length === 0) return null;
   const picked = pickLatestRecipes(rows);
@@ -194,7 +194,7 @@ export function elementWire(rows: readonly VerifyRow[], opts: ElementWireOptions
   const targets: VerifyTargetWire[] = [];
   for (const [target, list] of [...byTarget.entries()].sort((a, b) => targetRank(a[0]) - targetRank(b[0]))) {
     const main = list[0];
-    // Rozhodnutie 2 (Samuel 2. 11.): veličina, ktorá v súbore nie je, sa nezobrazuje.
+        // Decision 2 (Samuel 2. 11.): a quantity that is not in the file is not shown.
     if (main.file_value == null) continue;
     const reg = methodOfRecipe(main.recipe);
     const unit: VerifyUnit = reg ? UNIT_OF_KIND[reg.kind] : "m";
@@ -242,7 +242,7 @@ export function referencedGuids(rows: readonly VerifyRow[]): string[] {
   return [...out];
 }
 
-/** Počty stavov veličín, ktoré viewer ukáže (hlavný recept, len veličiny zo súboru). */
+/** Counts of quantity statuses that the viewer shows (main recipe, only quantities from the file). */
 export function visibleCounts(elements: readonly VerifyElementWire[]): Record<VerifyStatus, number> {
   const c: Record<VerifyStatus, number> = { green: 0, yellow: 0, red: 0, grey: 0 };
   for (const e of elements) for (const t of e.targets) c[t.status]++;

@@ -3,9 +3,9 @@ import { NextResponse } from "next/server";
 import { clientIpKey, createRateLimiter, isCrossOriginBlocked } from "@/lib/api-guard";
 
 /**
- * Ochrana zápisov IDS z viewera (D-162, D-182): env brána `IDS_WRITE_ENABLED` (predvolene vypnutá), origin guard a
- * per-IP rate limit (D-068), ako pri pohľadoch a podkladoch (D-161, D-072). Spoločná pre `/api/ids`,
- * `/api/ids/library`, `/api/ids/models` a `/api/ids/runs`; limit sa počíta spolu.
+  * Protection of IDS writes from the viewer (D-162, D-182): env gate `IDS_WRITE_ENABLED` (off by default), origin guard and
+  * per-IP rate limit (D-068), as with views and underlays (D-161, D-072). Shared by `/api/ids`,
+  * `/api/ids/library`, `/api/ids/models` and `/api/ids/runs`; the limit is counted together.
  */
 
 const RATE_LIMIT_MAX = Number(process.env.IDS_RATE_LIMIT_MAX ?? (process.env.NODE_ENV === "production" ? 60 : 0));
@@ -17,7 +17,7 @@ export const NO_STORE = { "Cache-Control": "no-store" };
 export const jsonFail = (error: string, status: number, extra: Record<string, unknown> = {}) =>
   NextResponse.json({ error, ...extra }, { status, headers: NO_STORE });
 
-/** null = zápis povolený; inak odpoveď 403 / 429. */
+/** null = the write is allowed; otherwise a 403 / 429 response. */
 export function idsWriteGuard(req: Request): NextResponse | null {
   if (process.env.IDS_WRITE_ENABLED !== "true") {
     return NextResponse.json({ error: "ukladanie IDS z viewera je vypnuté (IDS_WRITE_ENABLED), ulož ho v chate" }, { status: 403 });

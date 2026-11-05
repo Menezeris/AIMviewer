@@ -1,8 +1,8 @@
 /**
- * Zloženie kontajnera ICDD (ISO 21597-1/-2) z plánu a obsahu payloadov (D-181, #350).
- * Čisté funkcie: `buildIndex`, `buildLinksets`, `buildAimOntology` vracajú RDF/XML text,
- * `assembleIcdd` ZIP. Rovnaký plán a payloady = bajtovo rovnaký kontajner (zoradené trojice,
- * IRI linkov z hashu, pevné časy v ZIP); medzi dvoma exportmi sa mení len ct:creationDate.
+  * Assembly of an ICDD container (ISO 21597-1/-2) from the plan and the payload contents (D-181, #350).
+  * Pure functions: `buildIndex`, `buildLinksets`, `buildAimOntology` return RDF/XML text,
+  * `assembleIcdd` a ZIP. The same plan and payloads = a byte-identical container (sorted triples,
+  * link IRIs from a hash, fixed times in the ZIP); between two exports only ct:creationDate changes.
  */
 
 import { zipSync, type Zippable } from "fflate";
@@ -36,7 +36,7 @@ import { iri, lit, OWL, RDF_TYPE, RDFS, writeRdfXml, XSD, type Term, type Triple
 import { sha256 } from "./sha256";
 import { buildAimXlsx, XLSX_FILE } from "./xlsx";
 
-/** Vlastnosti AIM ontológie (lokálne mená). */
+/** Properties of the AIM ontology (local names). */
 export const AIM_PROPS = [
   "source",
   "role",
@@ -75,7 +75,7 @@ const PREFIXES = (plan: IcddPlan): Record<string, string> => ({
   xsd: XSD,
 });
 
-/** `ct:ContainerDescription` s dokumentmi, linksetmi a vydavateľom. */
+/** `ct:ContainerDescription` with documents, linksets and the publisher. */
 export function buildIndex(plan: IcddPlan): string {
   const t: Triple[] = [];
   const add = (s: string, p: string, o: Term) => t.push({ s: iri(s), p, o });
@@ -91,7 +91,7 @@ export function buildIndex(plan: IcddPlan): string {
   if (plan.description) add(c, `${CT}description`, lit(plan.description));
   const pub = `${base}#publisher`;
   add(c, `${CT}publishedBy`, iri(pub));
-  add(pub, RDF_TYPE, iri(`${CT}Party`)); // najmenej zaväzujúce: bez Organisation/Person (D-181 bod 4, otvorené)
+  add(pub, RDF_TYPE, iri(`${CT}Party`)); // least committing: without Organisation/Person (D-181 point 4, open)
   add(pub, `${CT}name`, lit(plan.publisher.name));
 
   for (const p of plan.payloads) {
@@ -121,13 +121,13 @@ export function buildIndex(plan: IcddPlan): string {
     add(c, `${CT}containsLinkset`, iri(l));
     add(l, RDF_TYPE, iri(`${CT}Linkset`));
     add(l, `${CT}filename`, lit(`${layer}.rdf`));
-    // len informácia pre iné nástroje; import rozhoduje podľa EXCHANGE v kóde (D-181 dodatok "import")
+        // only information for other tools; the import decides by EXCHANGE in code (D-181 addendum "import")
     add(l, aimTerm(plan, "exchange"), lit(EXCHANGE[layer]));
   }
   return writeRdfXml(t, PREFIXES(plan));
 }
 
-/** Kľúč konca linku nezávislý od IRI: súbor + GlobalId (alebo `Trieda.Identification=hodnota`) / strana. */
+/** Link end key independent of the IRI: file + GlobalId (or `Class.Identification=value`) / page. */
 export function endKey(e: {
   file: string;
   guid?: string | null;
@@ -138,7 +138,7 @@ export function endKey(e: {
   return `${e.file}|${id}|${e.page ?? ""}`;
 }
 
-/** Jeden linkset na vrstvu: `ls:Link` podtriedy s `ls:LinkElement` a identifikátormi (GlobalId, strana PDF). */
+/** One linkset per layer: `ls:Link` subclasses with `ls:LinkElement` and identifiers (GlobalId, PDF page). */
 export function buildLinksets(plan: IcddPlan): Record<Layer, string> {
   const payloads = new Map(plan.payloads.map((p) => [p.id, p]));
   const base = containerBase(plan.versionID);
@@ -167,7 +167,7 @@ export function buildLinksets(plan: IcddPlan): Record<Layer, string> {
         add(id, `${LS}identifier`, lit(end.guid));
         add(id, `${LS}identifierField`, lit("GlobalId"));
       } else if (end.ident) {
-        // IfcDocumentInformation / IfcDocumentReference nie sú IfcRoot (bez GlobalId): identita cez Identification
+                // IfcDocumentInformation / IfcDocumentReference are not IfcRoot (no GlobalId): identity via Identification
         const id = `${lsBase}#I-${sha256(`ident|${end.ident.field}|${end.ident.value}`).slice(0, 20)}`;
         add(e, `${LS}hasIdentifier`, iri(id));
         add(id, RDF_TYPE, iri(`${LS}StringBasedIdentifier`));
@@ -186,8 +186,8 @@ export function buildLinksets(plan: IcddPlan): Record<Layer, string> {
     const from = element(link.from);
     const to = element(link.to);
     const l = `${lsBase}#L-${sha256(linkKey(plan, link)).slice(0, 24)}`;
-    // Vlastná trieda aim: dostane aj nadtriedu ls: (dôsledok rdfs:subClassOf z aim.rdf), aby väzbu našiel aj čítač
-    // bez inferencie RDFS a bez ontológie aim: (LS_BASE_TYPE).
+        // The custom aim: class also gets the superclass ls: (a consequence of rdfs:subClassOf from aim.rdf), so that a reader
+        // without RDFS inference and without the aim: ontology (LS_BASE_TYPE) finds the link too.
     const lsType = LS_BASE_TYPE[link.kind];
     if (lsType) add(l, RDF_TYPE, iri(`${LS}${lsType}`));
     if (link.kind === "IsIdenticalTo" || link.kind === "DocumentIsIdenticalTo") {
@@ -218,7 +218,7 @@ export function buildLinksets(plan: IcddPlan): Record<Layer, string> {
   return out;
 }
 
-/** Kanonický kľúč väzby (bez IRI), rovnaký pri exporte aj po importe: základ roundtripu. */
+/** Canonical key of a link (without the IRI), the same at export and after import: the basis of the roundtrip. */
 export function linkKey(plan: Pick<IcddPlan, "payloads">, link: IcddLink): string {
   const file = (id: string) => plan.payloads.find((p) => p.id === id)?.filename ?? `?${id}`;
   let a = endKey({ file: file(link.from.payload), guid: link.from.guid, ident: link.from.ident, page: link.from.page });
@@ -227,7 +227,7 @@ export function linkKey(plan: Pick<IcddPlan, "payloads">, link: IcddLink): strin
   return [link.kind, a, b, link.source ?? "", link.role ?? "", link.rule ?? "", link.basedOn ?? "", link.ifcRelationship ?? "", link.relationshipId ?? ""].join(" ");
 }
 
-/** Vlastná ontológia AIM: len to, čo ISO 21597-2 nemá (D-181, plán #350 časť 2.4). */
+/** The custom AIM ontology: only what ISO 21597-2 does not have (D-181, plan #350 part 2.4). */
 export function buildAimOntology(plan: Pick<IcddPlan, "aimNamespace">): string {
   const ns = plan.aimNamespace;
   const onto = ns.replace(/#$/, "");
@@ -250,7 +250,7 @@ export function buildAimOntology(plan: Pick<IcddPlan, "aimNamespace">): string {
     add(`${ns}${p}`, RDF_TYPE, iri(`${OWL}DatatypeProperty`));
     add(`${ns}${p}`, `${RDFS}range`, iri(p === "revisionNo" ? `${XSD}integer` : `${XSD}string`));
   }
-  // Na akej IFC sémantike väzby stoja (D-181 bod 3): IFC vzťah na linku + odkaz na jeho definíciu v IFC 4.3.
+    // On which IFC semantics the links stand (D-181 point 3): the IFC relationship on the link + a reference to its definition in IFC 4.3.
   const rel = `${ns}ifcRelationship`;
   add(rel, `${RDFS}comment`, lit("Name of the IFC relationship (IFC 4.3 schema) whose semantics the link carries, e.g. IfcRelAssociatesDocument for els:IsElaboratedBy element -> document, IfcRelReferencedInSpatialStructure for aim:IsReferencedInSpatialStructure. Links in the AIM layer exist only where the relationship crosses files or is derived; relationships inside an IFC file stay in that file."));
   for (const name of [...new Set(Object.values(IFC_RELATIONSHIP))].sort()) add(rel, `${RDFS}seeAlso`, iri(`${IFC_DOCS_URL}${name}.htm`));
@@ -270,20 +270,20 @@ export function buildAimOntology(plan: Pick<IcddPlan, "aimNamespace">): string {
   return writeRdfXml(t, { aim: ns, ls: LS, owl: OWL, rdfs: RDFS, xsd: XSD });
 }
 
-/** Pevný čas v ZIP (determinizmus): 1980-01-01, najmenší čas formátu ZIP. */
+/** Fixed time in the ZIP (determinism): 1980-01-01, the smallest time of the ZIP format. */
 const ZIP_TIME = new Date(1980, 0, 1, 0, 0, 0);
 
 export interface AssembleInput {
   plan: IcddPlan;
-  /** Obsah payloadov podľa `IcddPayload.id` (už rozbalený, sha256 overený volajúcim alebo tu). */
+    /** Payload contents by `IcddPayload.id` (already unpacked, sha256 verified by the caller or here). */
   payloads: Map<string, Uint8Array>;
-  /** ISO ontológie podľa mena súboru (`Container.rdf`...). */
+    /** ISO ontologies by file name (`Container.rdf`...). */
   ontologies: Record<string, string>;
 }
 
 /**
- * Súbory navyše z väzieb plánu (voľba `extras`): xlsx výpis linksetov. Do kontajnera nejdú (Samuel 1. 11., audit ICDD:
- * výpis by zdvojoval pravdu linksetov a mohol by zostarnúť), stiahnu sa vedľa `.icdd`.
+  * Extra files from the plan links (option `extras`): xlsx listing of linksets. They do not go into the container (Samuel 1. 11., ICDD audit:
+  * the listing would duplicate the truth of the linksets and could go stale), they are downloaded next to the `.icdd`.
  */
 export function sideFiles(plan: IcddPlan): { filename: string; mime: string; bytes: Uint8Array }[] {
   const out: { filename: string; mime: string; bytes: Uint8Array }[] = [];
@@ -296,7 +296,7 @@ export function sideFiles(plan: IcddPlan): { filename: string; mime: string; byt
   return out;
 }
 
-/** Zloží `.icdd` (ZIP). Overí sha256 každého payloadu voči plánu; nesúlad = chyba, nič sa nezloží. */
+/** Assembles the `.icdd` (ZIP). Verifies the sha256 of every payload against the plan; a mismatch = an error, nothing is assembled. */
 export function assembleIcdd({ plan, payloads, ontologies }: AssembleInput): Uint8Array {
   const enc = new TextEncoder();
   const files: Zippable = {};
@@ -322,7 +322,7 @@ export function assembleIcdd({ plan, payloads, ontologies }: AssembleInput): Uin
   }
   const linksets = buildLinksets(plan);
   for (const layer of plan.layers) put(`${DIR_TRIPLES}${layer}.rdf`, enc.encode(linksets[layer]));
-  // fflate zapisuje v poradí kľúčov; zoradíme ich, aby poradie nezáviselo od plánu
+    // fflate writes in key order; we sort them so that the order does not depend on the plan
   const sorted: Zippable = {};
   for (const k of Object.keys(files).sort()) sorted[k] = files[k];
   return zipSync(sorted);

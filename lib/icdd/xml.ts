@@ -1,8 +1,8 @@
 /**
- * Malý XML parser pre RDF/XML v ICDD (D-181): index, linksety a ontológie ISO 21597.
- * Bez závislostí, aby bežal v prehliadači aj v Node (kontrola kontajnera pri importe).
- * Vie elementy, atribúty, text, CDATA, komentáre, inštrukcie a preddefinované a číselné entity;
- * DTD s vlastnými entitami odmietne (ontológie ISO ich nemajú, a cudzí obsah ich nemá dostať).
+  * Small XML parser for RDF/XML in ICDD (D-181): index, linksets and ISO 21597 ontologies.
+  * No dependencies, so it runs in the browser and in Node (container check at import).
+  * Knows elements, attributes, text, CDATA, comments, instructions and predefined and numeric entities;
+  * DTD with custom entities is rejected (the ISO ontologies do not have them, and foreign content must not get them).
  */
 
 export interface XmlElement {
@@ -30,7 +30,7 @@ export function escapeXml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-/** Rozparsuje dokument a vráti koreňový element. */
+/** Parses a document and returns the root element. */
 export function parseXml(input: string): XmlElement {
   let s = input;
   if (s.charCodeAt(0) === 0xfeff) s = s.slice(1);
@@ -78,7 +78,7 @@ export function parseXml(input: string): XmlElement {
       if (stack.length === 0) root = root ?? top;
       i = end + 1;
     } else {
-      // začiatočný tag; atribúty môžu obsahovať '>' v úvodzovkách
+            // start tag; attributes may contain '>' in quotes
       let j = lt + 1;
       let quote: string | null = null;
       while (j < s.length) {

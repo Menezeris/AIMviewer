@@ -1,8 +1,8 @@
 import type { ToolDefinition } from "../llm/provider";
 
 /**
- * Definície toolu `ids_document` (D-162) - bez závislostí motora, aby ich MCP route mohla
- * importovať staticky; vykonanie je v `./tools` (lenivo).
+  * Definitions of the `ids_document` tool (D-162) - without engine dependencies, so the MCP route can
+  * import them statically; the execution is in `./tools` (lazily).
  */
 
 export const IDS_ACTIONS = ["list", "get", "create", "apply_ops", "versions", "diff", "export", "open", "from_viewer"] as const;

@@ -47,7 +47,7 @@ const setup = () => {
     try {
       json = JSON.parse(r.text);
     } catch {
-      /* chyba vstupu je obyčajný text */
+      /* input error is plain text */
     }
     return { ...r, json };
   };
@@ -148,7 +148,7 @@ describe("ids_document (D-162)", () => {
     const a = await run({ action: "apply_ops", ids: "CHAT-ER0101", ops: [{ kind: "doc.setInfo", payload: { field: "version", value: "1.1" } }] });
     expect(a.isError).toBe(false);
     expect(a.json.version).toBe(2);
-    // snímka ostala nedotknutá
+        // the snapshot stayed untouched
     expect((await store.version(store.docs[0].id))?.version).toBe(1);
     expect(store.rows.filter((v) => v.document_id === store.docs[0].id)).toHaveLength(1);
   });

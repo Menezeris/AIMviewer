@@ -5,8 +5,8 @@ import { getSupabaseAdmin } from "../supabase/server";
 import type { SavedViewRow } from "./plan";
 
 /**
- * Uloženie pohľadov (D-122): tabuľka `saved_views`. Tools pracujú cez rozhranie
- * `SavedViewStore`, takže sú testovateľné bez DB (vzor `lib/bcf/store.ts`).
+  * Storage of views (D-122): the table `saved_views`. The tools work through the interface
+  * `SavedViewStore`, so they are testable without the DB (pattern `lib/bcf/store.ts`).
  */
 
 export type SavedViewWrite = Partial<
@@ -14,18 +14,18 @@ export type SavedViewWrite = Partial<
 >;
 
 export interface SavedViewStore {
-  /** Uložené pohľady (bez "Posledný pohľad"), naposledy zmenené prvé. */
+    /** Saved views (without "Posledný pohľad" (last view)), most recently changed first. */
   list(): Promise<SavedViewRow[]>;
-  /** Pohľad podľa mena bez ohľadu na veľkosť písmen; null = neexistuje. */
+    /** View by name regardless of letter case; null = does not exist. */
   byName(name: string): Promise<SavedViewRow | null>;
-  /** Uložený pohľad podľa `id` (D-161: `id` riadku = `BasketView.id`); "Posledný pohľad" sa nevracia. */
+    /** Saved view by `id` (D-161: the row `id` = `BasketView.id`); "Posledný pohľad" (last view) is not returned. */
   byId(id: string): Promise<SavedViewRow | null>;
   last(): Promise<SavedViewRow | null>;
-  /** `id` zadáva viewer (D-161), inak ho vygeneruje DB. */
+    /** The `id` is supplied by the viewer (D-161), otherwise the DB generates it. */
   create(row: SavedViewWrite & Pick<SavedViewRow, "name" | "viewpoint"> & { id?: string }): Promise<SavedViewRow>;
   update(id: string, patch: SavedViewWrite): Promise<SavedViewRow>;
   remove(id: string): Promise<void>;
-  /** Prepíše jediný riadok "Posledný pohľad" (kind = 'last'). */
+    /** Overwrites the single row "Posledný pohľad" (last view; kind = 'last'). */
   setLast(row: SavedViewWrite & Pick<SavedViewRow, "name" | "viewpoint">): Promise<void>;
 }
 
@@ -46,7 +46,7 @@ export function supabaseSavedViewStore(projectId: string): SavedViewStore {
       return (data ?? []) as SavedViewRow[];
     },
     async byName(name) {
-      // Presná zhoda bez ohľadu na veľkosť písmen: zástupné znaky LIKE sa escapujú.
+            // Exact match regardless of letter case: the LIKE wildcards are escaped.
       const { data, error } = await db()
         .from(TABLE)
         .select("*")
@@ -93,7 +93,7 @@ export function supabaseSavedViewStore(projectId: string): SavedViewStore {
   };
 }
 
-/** Aktuálne revízie modelov projektu {model: revízia} (D-086, D-189) v čase uloženia. */
+/** Current model revisions of the project {model: revision} (D-086, D-189) at the time of saving. */
 export async function currentModelRevisions(projectId: string): Promise<Record<string, number>> {
   const { data, error } = await getSupabaseAdmin().from("model_revisions").select("model, revision").eq("project_id", projectId).eq("is_current", true);
   if (error) fail("Čítanie revízií modelov zlyhalo", error);

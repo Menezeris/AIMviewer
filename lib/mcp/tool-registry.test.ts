@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
-// Moduly toolov sú server-only (D-026) - mimo RSC runtime treba marker odmockovať.
+// The tool modules are server-only (D-026) - outside the RSC runtime the marker must be mocked out.
 vi.mock("server-only", () => ({}));
 
 import { mcpInstructions } from "../llm/system-prompt";
@@ -14,10 +14,10 @@ import { mcpToolDefinitions, mcpToolGroups } from "./tool-list";
 import registry from "./tool-registry.json";
 
 /**
- * Register toolov (D-114): každý tool konektora má v `tool-registry.json`
- * rozhodnutie, ktoré ho zaviedlo. Nový tool bez riadku v registri neprejde,
- * takže pridanie je v review vidieť a odkazuje na záznam s odôvodnením, prečo
- * nestačilo rozšíriť existujúci tool. Pevný strop počtu nie je.
+  * Tool registry (D-114): every connector tool has in `tool-registry.json`
+  * the decision that introduced it. A new tool without a row in the registry does not pass,
+  * so the addition is visible in review and points to a record explaining why
+  * extending an existing tool was not enough. There is no fixed cap on the count.
  */
 
 const REGISTRY = registry as Record<string, string>;
@@ -64,7 +64,7 @@ describe("register toolov MCP (D-114)", () => {
   it("MCP-TOOLS.md zodpovedá definíciám toolov", async () => {
     const chars = definitionChars(tools);
     const instructions = mcpServerInstructions("https://example.test", true, groups).length;
-    // Informatívne (D-114): koľko klient načíta pred prvou otázkou; nepadá, len sa vypíše.
+        // Informational (D-114): how much the client loads before the first question; it does not fail, it only prints.
     console.info(`MCP: ${tools.length} toolov, definície ${chars} znakov, inštrukcie ${instructions} znakov`);
     await expect(inventoryMarkdown(groups, REGISTRY)).toMatchFileSnapshot("../../MCP-TOOLS.md");
   });

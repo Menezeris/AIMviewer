@@ -35,7 +35,7 @@ const M1 = "f".repeat(64);
 const M2 = "e".repeat(64);
 const ER_PATH = "zadanie/ER/ER-0101 Priestorový model a protokol zamerania – odovzdanie.md";
 
-/** Čo zapíše vydanie knižnice v DB (Python `assetin`, schéma `library`): knižničné IDS a nemenná verzia `import`. */
+/** What a library release writes into the DB (Python `assetin`, schema `library`): library IDS and an immutable `import` version. */
 async function publish(store: MemoryIdsStore, code: string, xml: string, release: string, manifest: string) {
   let doc = await store.byCode(code);
   doc ??= await store.createDocument({ code, title: code, origin: "library", library_source: "db:library/assetin" });
@@ -106,7 +106,7 @@ describe("katalóg knižnice z DB (D-182 doplnok V30)", () => {
     await setModelBinding(deps, { code: "ER-0101.ARCH", model: "ASR", bound: true, author: "Samuel" });
     expect((await libraryCatalog(deps)).items[0]).toMatchObject({ state: "assigned", models: ["ASR"] });
 
-    // nové vydanie -> nová verzia toho istého IDS, väzba ostáva
+        // new release -> a new version of the same IDS, the link stays
     await publish(store, "ER-0101.ARCH", ids("ER-0101", SPACE_SPEC), "2026.11.2", M2);
     expect((await libraryCatalog(deps)).items[0]).toMatchObject({ aim: { version: 2 }, release: { release: "2026.11.2" }, state: "assigned" });
   });
@@ -198,11 +198,11 @@ describe("väzba IDS na model a výsledok z viewera (D-182)", () => {
       ["G2", null, "fail", ["Name missing"]],
     ]);
 
-    // stará revízia: uloží sa k nej a povie, že je zastaraná
+        // old revision: it is saved against it and says it is outdated
     const old = await saveViewerRun(rdeps, { ...run, revision: 78 });
     expect(old).toMatchObject({ stale: true, warning: expect.stringContaining("v78") });
 
-    // nové vydanie knižnice -> výsledok nad v1 je ids_stale
+        // new library release -> the result over v1 is ids_stale
     await publish(store, "ER-0101_ARCH", ids("ER-0101", SPACE_SPEC), "2026.11.2", M2);
     const project = await projectCatalog(deps);
     expect(project.items[0].runs).toEqual([expect.objectContaining({ model: "ASR", version: 1, stale: true, ids_stale: true, engine_version: "@ifc-lite/ids 1.4.0", based_on: { ASR: 78 } })]);

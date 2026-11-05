@@ -17,30 +17,30 @@ import {
 } from "./types";
 
 /**
- * Tool `ids_document` (D-162), len v MCP konektore. Nositeľ IDS je XML v DB; každé `apply_ops`
- * ide XML -> `ids_read` -> operácie (`ids_apply_ops`, brána voči IFC schéme) -> `ids_write`
- * (audit pred zápisom) -> nová nemenná verzia. Odmietnutá dávka nič neuloží. Upstream
- * `ids_apply_ops` nesie Studio JSON s id z obsahu; ten sa neukladá. Závislosti (DB, motor)
- * sú v `runtime.ts`.
+  * Tool `ids_document` (D-162), MCP connector only. The IDS carrier is XML in the DB; every `apply_ops`
+  * goes XML -> `ids_read` -> operations (`ids_apply_ops`, gate against the IFC schema) -> `ids_write`
+  * (audit before writing) -> a new immutable version. A rejected batch saves nothing. Upstream
+  * `ids_apply_ops` carries Studio JSON with ids from the content; it is not stored. Dependencies (DB, engine)
+  * are in `runtime.ts`.
  */
 
 export interface IdsToolDeps {
   store: IdsStore;
-  /** Relácia @ifc-lite/mcp bez modelov; predvolene čerstvá. */
+    /** Session of @ifc-lite/mcp without models; fresh by default. */
   engine?: () => Promise<IdsEngine>;
-  /** Živý viewer (`open`, `from_viewer`); bez neho tieto akcie povedia, že viewer nie je nastavený. */
+    /** Live viewer (`open`, `from_viewer`); without it these actions say the viewer is not set up. */
   viewer?: IdsViewerDeps;
-  /** Väzby IDS na modely (D-182); bez neho `list` väzby neukáže. */
+    /** IDS links to models (D-182); without it `list` does not show the links. */
   lib?: Pick<IdsLibraryStore, "models">;
 }
 
-/** Výsledok `ids_open` vo vieweri: `APPLIED` z živého kanála. */
+/** Result of `ids_open` in the viewer: `APPLIED` from the live channel. */
 export type IdsOpenOutcome = { ok: true; issues: string[] } | { ok: false; reason: string };
 
 export interface IdsViewerDeps {
-  /** Pošle vieweru op `ids_open` a počká na potvrdenie `APPLIED`. */
+    /** Sends the viewer the `ids_open` op and waits for the `APPLIED` confirmation. */
   open: (req: IdsOpenReq) => Promise<IdsOpenOutcome>;
-  /** Surová odpoveď `view_state` z otvoreného viewera; string = prečo sa nedala prečítať. */
+    /** Raw `view_state` response from the open viewer; string = why it could not be read. */
   viewState: () => Promise<unknown>;
 }
 
@@ -88,7 +88,7 @@ export interface Engine {
   engine: IdsEngine;
 }
 
-/** XML -> Studio dokument (`ids_read`) s názvom a verziou z `ids:info`. */
+/** XML -> Studio document (`ids_read`) with the title and version from `ids:info`. */
 export async function readXml(e: Engine, xml: string) {
   const out = await callIds(e.engine, "ids_read", { ids_xml: xml });
   const described = describeDoc(out.doc);
@@ -104,7 +104,7 @@ interface Serialized {
   audit: Record<string, unknown>;
 }
 
-/** `ids_write`: serializácia s auditom; dokument s chybami auditu nevznikne. */
+/** `ids_write`: serialization with audit; a document with audit errors is not created. */
 async function writeDoc(e: Engine, doc: unknown, lint: unknown): Promise<Serialized> {
   const out = await callIds(e.engine, "ids_write", { doc });
   const audit = (out.audit ?? {}) as { status?: string; issues?: Array<{ severity?: string }> };
@@ -132,7 +132,7 @@ function issuesView(details: Record<string, unknown> | null) {
   }));
 }
 
-/** Operácie do dokumentu (z `doc`, alebo do prázdneho). Odmietnutú dávku vráti ako chybu s kódmi brány. */
+/** Operations into a document (from `doc`, or into an empty one). */
 async function applyToDoc(e: Engine, base: { doc?: unknown; title?: string }, ops: unknown) {
   const out = await callIds(e.engine, "ids_apply_ops", {
     ...(base.doc !== undefined ? { doc: base.doc } : {}),
@@ -278,7 +278,7 @@ async function create(args: Record<string, unknown>, deps: IdsToolDeps, e: Engin
   }
 }
 
-/** Najčastejšie operácie (celá schéma má ~40 kB, príklady stačia na väčšinu úprav). */
+/** The most common operations (the whole schema is ~40 kB, the examples are enough for most edits). */
 const OP_EXAMPLES = [
   { kind: "spec.add", payload: { specId: "<uuid>", name: "Steny majú požiarnu odolnosť", ifcVersions: ["IFC4"] } },
   { kind: "facet.add", payload: { specId: "<uuid>", section: "applicability", facetId: "<uuid>", facet: { type: "entity", name: { kind: "equals", value: "IFCWALL" } } } },
@@ -378,7 +378,7 @@ async function exportIds(args: Record<string, unknown>, deps: IdsToolDeps) {
   };
 }
 
-/** `ids_audit`: XML s chybami auditu sa neuloží. */
+/** `ids_audit`: XML with audit errors is not saved. */
 export async function auditXml(e: Engine, xml: string): Promise<Record<string, unknown>> {
   const report = await callIds(e.engine, "ids_audit", { ids_xml: xml });
   const c = counts(report.counts);
@@ -390,7 +390,7 @@ export async function auditXml(e: Engine, xml: string): Promise<Record<string, u
 
 const VIEWER_AUTHOR = "Viewer (AIM)";
 
-/** Kód z názvu IDS: písmená a čísla bez diakritiky, spojené pomlčkou, veľkými. */
+/** Code from the IDS title: letters and digits without diacritics, joined by hyphens, uppercase. */
 function slugCode(title: string): string {
   const stem = title.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-+|-+$/g, "").toUpperCase().slice(0, 60);
   return stem || "IDS";
@@ -406,9 +406,9 @@ async function freeCode(deps: IdsToolDeps, wanted: string): Promise<string> {
 
 export interface ViewerSaveInput {
   xml: string;
-  /** Kód IDS, z ktorého viewer vychádzal; bez neho vznikne nové IDS. */
+    /** IDS code the viewer started from; without it a new IDS is created. */
   code?: string;
-  /** Verzia, z ktorej úprava vychádzala; povinná pri zápise do existujúceho pracovného IDS. */
+    /** Version the edit started from; required when writing to an existing working IDS. */
   base_version?: number;
   title?: string;
   note?: string;
@@ -419,16 +419,16 @@ export interface ViewerSaveOutcome {
   code: string;
   version: number;
   title: string;
-  /** Vzniklo nové IDS (bez kódu, kód zmazaný, alebo kópia knižničnej snímky). */
+    /** A new IDS arose (no code, code deleted, or a copy of a library snapshot). */
   created: boolean;
   previous_version?: number;
   derived_from?: string;
 }
 
 /**
- * Zápis IDS z viewera (D-162, `IDS_SAVE`; aj `from_viewer`): audit pred zápisom, nová nemenná verzia
- * `source='viewer'` nad `base_version` (inak `IdsConflictError`). Knižničnú snímku neprepíše: uloží sa ako nové
- * pracovné IDS s väzbou `derived_from`. Bez kódu vznikne nové pracovné IDS s kódom z názvu.
+  * Writes an IDS from the viewer (D-162, `IDS_SAVE`; also `from_viewer`): audit before writing, a new immutable version
+  * `source='viewer'` over `base_version` (otherwise `IdsConflictError`). It does not overwrite a library snapshot: it is saved as a new
+  * working IDS with the `derived_from` link. Without a code a new working IDS is created with a code from the title.
  */
 export async function saveFromViewer(deps: IdsToolDeps, input: ViewerSaveInput): Promise<ViewerSaveOutcome> {
   if (typeof input.xml !== "string" || !input.xml.trim()) throw new IdsInputError("xml: neprázdny reťazec s IDS XML.");
@@ -475,7 +475,7 @@ export async function saveFromViewer(deps: IdsToolDeps, input: ViewerSaveInput):
   }
 }
 
-/** Čo sa v AIM zmenilo od verzie, z ktorej viewer vychádzal (do odpovede 409 a do správy o konflikte). */
+/** What changed in AIM since the version the viewer started from (into the 409 response and the conflict message). */
 export async function conflictDiff(deps: IdsToolDeps, code: string, base: number | null, latest: number) {
   if (base === null || base === latest) return null;
   const doc = await deps.store.byCode(code);
@@ -496,7 +496,7 @@ function requireViewer(deps: IdsToolDeps, action: string): IdsViewerDeps {
   return deps.viewer;
 }
 
-/** `open`: IDS z DB do panela IDS Studio alebo Data validation vo vieweri (voliteľne beh, voliteľne len jedna špecifikácia). */
+/** `open`: IDS from the DB into the IDS Studio or Data validation panel in the viewer (optionally a run, optionally only one specification). */
 async function openInViewer(args: Record<string, unknown>, deps: IdsToolDeps, e: Engine) {
   const viewer = requireViewer(deps, "open");
   const doc = await loadDoc(deps, args.ids);
@@ -529,7 +529,7 @@ async function openInViewer(args: Record<string, unknown>, deps: IdsToolDeps, e:
   };
 }
 
-/** `from_viewer`: uloží IDS, ktoré má používateľ vo vieweri otvorené (Studio alebo panel validácie), ako novú verziu. */
+/** `from_viewer`: saves the IDS that the user has open in the viewer (Studio or the validation panel) as a new version. */
 async function fromViewer(args: Record<string, unknown>, deps: IdsToolDeps) {
   const viewer = requireViewer(deps, "from_viewer");
   const state = await viewer.viewState();
@@ -623,7 +623,7 @@ export async function execIdsTool(name: string, args: Record<string, unknown>, d
     return { text: JSON.stringify(out), isError: false };
   } catch (err) {
     if (err instanceof IdsEngineError) {
-      // Odmietnutá dávka alebo zlý dokument: kódy brány, cesty a kandidáti; nič sa neuložilo.
+            // Rejected batch or a bad document: gate codes, paths and candidates; nothing was saved.
       const issues = issuesView(err.details);
       return {
         text: JSON.stringify({

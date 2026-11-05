@@ -3,9 +3,9 @@ import "server-only";
 import type { SttProvider, SttRequest } from "./provider";
 
 /**
- * Deterministický mock STT (D-069) — celá cesta mikrofón → /api/transcribe →
- * vloženie prepisu do inputu sa dá overiť bez API kľúča aj bez siete
- * (devtest/e2e, verify skill). Zapína sa cez `STT_PROVIDER=mock`.
+  * Deterministic STT mock (D-069) - the whole path microphone -> /api/transcribe ->
+  * inserting the transcript into the input can be verified without an API key and without a network
+  * (devtest/e2e, verify skill). It is switched on via `STT_PROVIDER=mock`.
  */
 export function createMockSttProvider(): SttProvider {
   return {

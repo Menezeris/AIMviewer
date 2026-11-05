@@ -17,16 +17,16 @@ import {
   type IdsVersionWrite,
 } from "./types";
 
-/** Úložisko IDS dokumentov v DB (D-162, `service_role`); logika je v `tools.ts`. */
+/** Store of IDS documents in the DB (D-162, `service_role`); the logic is in `tools.ts`. */
 
 const DOCS = "ids_documents";
 const VERSIONS = "ids_document_versions";
 const BASE_META = "id, document_id, version, sha256, ids_version, audit, author, source, note, created_at";
-/** Pôvod v knižnici (D-182); stĺpce pribudnú migráciou `20261102120000_ids_library_assign.sql`. */
+/** Origin in the library (D-182); the columns arrive via migration `20261102120000_ids_library_assign.sql`. */
 const LIBRARY_META = "library_repo, library_path, library_commit, library_code";
 const IN_CHUNK = 100;
 const RESULT_CHUNK = 500;
-/** Strop počtu dokumentov v `list` (jedno IDS je jeden riadok, nie model). */
+/** Cap of the document count in `list` (one IDS is one row, not a model). */
 const LIST_CAP = 200;
 
 function fail(what: string, error: { message: string } | null): never {
@@ -35,7 +35,7 @@ function fail(what: string, error: { message: string } | null): never {
 
 const isUniqueViolation = (error: { code?: string } | null) => error?.code === "23505";
 
-/** Stĺpce metadát verzie: s pôvodom v knižnici, kým DB nepovie, že ich nemá (pred migráciou D-182). */
+/** Version metadata columns: with the library origin, until the DB says it does not have them. */
 let withLibrary = true;
 const meta = () => (withLibrary ? `${BASE_META}, ${LIBRARY_META}` : BASE_META);
 async function selectMeta<T>(run: (cols: string) => PromiseLike<{ data: T | null; error: { code?: string; message: string } | null }>) {
@@ -136,7 +136,7 @@ export function supabaseIdsStore(projectId: string): IdsStore {
       if (baseVersion !== null && baseVersion !== latest) throw new IdsConflictError(latest, baseVersion);
       const { title, ...row } = write;
       const { data, error } = await db().from(VERSIONS).insert({ ...row, document_id: documentId, version: latest + 1 }).select("*").single();
-      // Súbežný zápis dostal rovnaké číslo: unikátny kľúč (document_id, version) ho odmietol.
+            // Concurrent write got the same number: the unique key (document_id, version) rejected it.
       if (isUniqueViolation(error)) throw new IdsConflictError(await latestOf(documentId), baseVersion);
       if (isMissingSchema(error)) fail(`Uloženie verzie IDS zlyhalo (${SCHEMA_HINT})`, error);
       if (error || !data) fail("Uloženie verzie IDS zlyhalo", error);

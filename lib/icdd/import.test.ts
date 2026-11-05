@@ -7,8 +7,8 @@ import { ASR, buildFixture, fixturePlan, G, PDF, VZT } from "./test-fixture";
 import { validateIcdd } from "./validate";
 
 /**
- * Import ICDD (D-181 dodatok "import"): export -> import roundtrip a pravidlá zápisu nad testovacím kontajnerom
- * (2 väzby prvok -> dokument v documents-elements s aim:relationshipId, ostatné vrstvy len na export).
+  * ICDD import (D-181 addendum "import"): export -> import roundtrip and write rules over a test container
+  * (2 element -> document links in documents-elements with aim:relationshipId, the other layers export only).
  */
 
 const REL_TERM = "11111111-1111-4111-8111-111111111111"; // VV.01.01.001 -> D.1.1.09 strana 3
@@ -129,7 +129,7 @@ describe("import ICDD (D-181 dodatok)", () => {
     const p = previewImport(baseRequest(), ctx({ aimLinks: [...ctx().aimLinks, extra] }));
     expect(p.changes).toEqual([]);
     expect(p.findings).toEqual([expect.objectContaining({ code: "missing_in_container", key: extra.id })]);
-    // kontajner bez importovateľného linksetu: AIM vrstva sa neporovnáva
+        // a container without an importable linkset: the AIM layer is not compared
     const req = baseRequest();
     req.links = req.links.filter((l) => l.layer !== "documents-elements");
     req.linksets = req.linksets.filter((l) => l.layer !== "documents-elements");
@@ -145,7 +145,7 @@ describe("import ICDD (D-181 dodatok)", () => {
     expect(codes(p).filter((c) => c === "export_only_changed")).toHaveLength(2); // len v kontajneri + len v AIM
     expect(p.diff?.same).toBe(false);
 
-    // značka "import" na exportnej vrstve nič neotvorí; IsElaboratedBy podstrčený do derived-spatial sa nezapíše
+        // the "import" marker on an export layer opens nothing; IsElaboratedBy slipped into derived-spatial is not written
     const r2 = baseRequest();
     r2.linksets.find((l) => l.layer === "derived-spatial")!.exchange = "import";
     const e = elaborated(r2)[0];
@@ -154,7 +154,7 @@ describe("import ICDD (D-181 dodatok)", () => {
     expect(p2.changes).toEqual([]);
     expect(codes(p2)).toEqual(expect.arrayContaining(["exchange_mark_mismatch", "export_only_changed"]));
 
-    // značka "export-only" na importnej vrstve import zastaví
+        // the "export-only" marker on an import layer stops the import
     const r3 = baseRequest();
     r3.linksets.find((l) => l.layer === "documents-elements")!.exchange = "export-only";
     elaborated(r3)[0].relationshipId = null;

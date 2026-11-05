@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-// Moduly sú server-only (D-026) — mimo RSC runtime treba marker odmockovať.
+// The modules are server-only (D-026) - outside the RSC runtime the marker must be mocked out.
 vi.mock("server-only", () => ({}));
 
 import { getSttProvider, SttConfigError } from "./provider";
@@ -75,7 +75,7 @@ describe("gemini STT provider", () => {
     const inline = contents[0].parts.find((p) => p.inline_data)?.inline_data;
     expect(inline?.mime_type).toBe("audio/mp4");
     expect(inline?.data).toBe(Buffer.from(audio).toString("base64"));
-    // Doménový slovník musí byť v prompte — hlavná výhoda oproti Web Speech API.
+        // The domain vocabulary must be in the prompt - the main advantage over the Web Speech API.
     expect(contents[0].parts.find((p) => p.text)?.text).toContain("VZT");
   });
 

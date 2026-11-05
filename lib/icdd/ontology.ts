@@ -1,8 +1,8 @@
 /**
- * Ontológie ISO 21597 (ct:, ls:, els:) a AIM ako pravidlá na kontrolu kontajnera (D-181).
- * Pravidlá sa čítajú zo samotných súborov ontológií (deklarované triedy a vlastnosti, rdfs:subClassOf,
- * rdfs:subPropertyOf, rdfs:domain / rdfs:range vrátane owl:unionOf, owl:Restriction s kardinalitou),
- * takže kontrola nemá vlastný opis normy, ktorý by sa od nej mohol odkloniť.
+  * ISO 21597 ontologies (ct:, ls:, els:) and AIM as rules for the container check (D-181).
+  * The rules are read from the ontology files themselves (declared classes and properties, rdfs:subClassOf,
+  * rdfs:subPropertyOf, rdfs:domain / rdfs:range including owl:unionOf, owl:Restriction with cardinality),
+  * so the check has no description of the standard of its own that could diverge from it.
  */
 
 import { Graph, OWL, RDF, RDF_TYPE, RDFS, XSD, type Term, type Triple } from "./rdf";
@@ -15,12 +15,12 @@ export interface Restriction {
 }
 
 export interface Ontology {
-  /** Menné priestory pokryté ontológiami (napr. `...Container#`); termy v nich musia byť deklarované. */
+    /** Namespaces covered by the ontologies (e.g. `...Container#`); terms in them must be declared. */
   namespaces: Set<string>;
   declared: Set<string>;
   superClasses: Map<string, Set<string>>;
   superProps: Map<string, Set<string>>;
-  /** Každý prvok poľa je jedna podmienka rdfs:domain (konjunkcia), množina = owl:unionOf. */
+    /** Each array item is one rdfs:domain condition (conjunction), the set = owl:unionOf. */
   domains: Map<string, Set<string>[]>;
   ranges: Map<string, Set<string>[]>;
   restrictions: Map<string, Restriction[]>;
@@ -99,7 +99,7 @@ export function loadOntology(sources: Triple[][]): Ontology {
       if (cs) addTo(o.ranges, s, cs);
     }
   }
-  // menné priestory = tie, v ktorých ontológia deklaruje svoje termy (nie importované owl:, foaf:...)
+    // namespaces = those in which the ontology declares its terms (not imported owl:, foaf:...)
   for (const onto of o.ontologyIris) {
     for (const d of o.declared) if (d.startsWith(`${onto}#`)) o.namespaces.add(`${onto}#`);
   }
@@ -127,7 +127,7 @@ function restriction(g: Graph, b: Term): Restriction | null {
   return null;
 }
 
-/** Trieda a všetky jej nadtriedy. */
+/** A class and all its superclasses. */
 export function classClosure(o: Ontology, types: Iterable<string>): Set<string> {
   const out = new Set<string>();
   const stack = [...types];
@@ -140,7 +140,7 @@ export function classClosure(o: Ontology, types: Iterable<string>): Set<string> 
   return out;
 }
 
-/** Vlastnosť a všetky jej nadvlastnosti. */
+/** A property and all its superproperties. */
 export function propClosure(o: Ontology, p: string): Set<string> {
   const out = new Set<string>();
   const stack = [p];
@@ -168,8 +168,8 @@ const XSD_LITERAL_OK = (range: string, t: Term): boolean => {
 };
 
 /**
- * Skontroluje dáta (index + linksety) voči ontológii: deklarované termy v pokrytých menných priestoroch,
- * domény a rozsahy, kardinality z owl:Restriction (aj kvalifikované, s rdfs:subPropertyOf).
+  * Checks the data (index + linksets) against the ontology: declared terms in the covered namespaces,
+  * domains and ranges, cardinalities from owl:Restriction (also qualified, with rdfs:subPropertyOf).
  */
 export function checkAgainstOntology(o: Ontology, data: Graph, label: (t: Term) => string): OntologyIssue[] {
   const issues: OntologyIssue[] = [];
@@ -221,7 +221,7 @@ export function checkAgainstOntology(o: Ontology, data: Graph, label: (t: Term) 
     }
   }
 
-  // kardinality: hodnoty vlastnosti vrátane jej podvlastností
+    // cardinalities: property values including its subproperties
   const subProps = new Map<string, Set<string>>();
   for (const tr of data.triples) {
     for (const sup of propClosure(o, tr.p)) {

@@ -1,8 +1,8 @@
 /**
- * Import späť a roundtrip (D-181, Samuel 30. 10.: "export -> import -> rovnaký stav"). Kontajner sa prečíta
- * na kanonické väzby (typ, konce ako súbor + GlobalId / strana, pôvod, rola, pravidlo, revízie) a porovná
- * so stavom AIM (plán z DB). Rovnaký stav = rovnaké payloady (meno, sha256) a 0 rozdielov vo väzbách.
- * Zápis importovaného kontajnera do DB je ďalší krok (pripravená migrácia, D-181 bod 7).
+  * Import back and roundtrip (D-181, Samuel 30. 10.: "export -> import -> same state"). The container is read
+  * into canonical links (type, ends as file + GlobalId / page, origin, role, rule, revisions) and compared
+  * with the AIM state (plan from the DB). Same state = same payloads (name, sha256) and 0 differences in links.
+  * Writing the imported container to the DB is the next step (prepared migration, D-181 point 7).
  */
 
 import { endKey, linkKey } from "./build";
@@ -39,7 +39,7 @@ const KIND_BY_TYPE = (aimNs: string): Record<string, LinkKind> => ({
   [`${aimNs}IsReferencedInSpatialStructure`]: "IsReferencedInSpatialStructure",
 });
 
-/** Namespace AIM z kontajnera: ontológia, ktorá deklaruje `IsReferencedInSpatialStructure`. */
+/** AIM namespace from the container: the ontology that declares `IsReferencedInSpatialStructure`. */
 export function detectAimNamespace(c: IcddContents, fallback: string): string {
   for (const t of c.data.triples) {
     if (t.o.t === "iri" && t.o.v.endsWith("IsReferencedInSpatialStructure")) return t.o.v.slice(0, -"IsReferencedInSpatialStructure".length);
@@ -47,7 +47,7 @@ export function detectAimNamespace(c: IcddContents, fallback: string): string {
   return fallback;
 }
 
-/** Koniec väzby prečítaný z kontajnera: súbor v `Payload documents/` + GlobalId / Identification / strana. */
+/** Link end read from the container: a file in `Payload documents/` + GlobalId / Identification / page. */
 export interface ContainerEnd {
   file: string;
   guid: string | null;
@@ -55,9 +55,9 @@ export interface ContainerEnd {
   page: number | null;
 }
 
-/** Väzba prečítaná z linksetu kontajnera (vstup roundtripu aj importu). */
+/** Link read from a container linkset (input of the roundtrip and of the import). */
 export interface ContainerLink {
-  /** Meno súboru linksetu bez `.rdf` (vrstva). */
+    /** Linkset file name without `.rdf` (layer). */
   layer: string;
   kind: LinkKind;
   from: ContainerEnd;
@@ -70,7 +70,7 @@ export interface ContainerLink {
   ifcRelationship: string | null;
 }
 
-/** Linkset z indexu: meno súboru a značka `aim:exchange` (null = bez značky, napr. cudzí nástroj). */
+/** Linkset from the index: file name and the `aim:exchange` marker (null = no marker, e.g. a foreign tool). */
 export interface ContainerLinkset {
   layer: string;
   exchange: string | null;
@@ -121,7 +121,7 @@ export function readContainerLinks(c: IcddContents, aimNamespace: string): Conta
     for (const s of subjects.values()) {
       let kind = g.types(s).map((t) => kinds[t]).find(Boolean);
       if (!kind) continue;
-      // identita dokumentov a podlaží je tá istá trieda els:IsIdenticalTo, líši sa vrstvou (LAYER_OF)
+            // identity of documents and storeys is the same class els:IsIdenticalTo, it differs by layer (LAYER_OF)
       if (kind === "IsIdenticalTo" && layer === LAYER_OF.DocumentIsIdenticalTo) kind = "DocumentIsIdenticalTo";
       let a: ContainerEnd;
       let b: ContainerEnd;
@@ -151,7 +151,7 @@ export function readContainerLinks(c: IcddContents, aimNamespace: string): Conta
   return links;
 }
 
-/** Kanonický kľúč väzby z kontajnera; rovnaký tvar ako `linkKey` pri exporte. */
+/** Canonical link key from the container; the same shape as `linkKey` at export. */
 export function containerLinkKey(l: Omit<ContainerLink, "layer">): string {
   return [
     l.kind,
@@ -168,7 +168,7 @@ export function containerLinkKey(l: Omit<ContainerLink, "layer">): string {
 
 export function stateFromContainer(c: IcddContents, aimNamespace: string): CanonicalState {
   const payloads = new Map<string, string>();
-  // súbory generované z väzieb (IFCX, xlsx) nie sú stav AIM; ich obsah kryjú väzby linksetov
+    // files generated from links (IFCX, xlsx) are not AIM state; their content is covered by the links of the linksets
   for (const d of c.documents.values()) if (d.filename && !d.generated) payloads.set(d.filename, d.checksum ?? "");
   const links = new Map<string, CanonicalLink>();
   for (const l of readContainerLinks(c, aimNamespace)) {

@@ -1,9 +1,9 @@
 import { openEngineSession, type EngineSession } from "../engine/session";
 
 /**
- * IDS tooly balíka `@ifc-lite/mcp` (`ids_read`, `ids_apply_ops`, `ids_write`, `ids_audit`, `ids_lint`)
- * cez reláciu motora bez modelov (D-162). Balík je jediný zdroj logiky; tu sa len prevádza
- * výsledok toolu na dáta alebo na `IdsEngineError` so štruktúrovanými podrobnosťami.
+  * IDS tools of the `@ifc-lite/mcp` package (`ids_read`, `ids_apply_ops`, `ids_write`, `ids_audit`, `ids_lint`)
+  * through an engine session without models (D-162). The package is the only source of logic; here the
+  * tool result is only converted to data or to an `IdsEngineError` with structured details.
  */
 
 export type IdsEngine = Pick<EngineSession, "call">;

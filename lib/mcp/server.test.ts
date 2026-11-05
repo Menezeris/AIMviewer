@@ -123,7 +123,7 @@ describe("MCP server (D-079)", () => {
       `Odoslané do živého viewera. Záložný odkaz:\n${link}\n`,
       "Vykonané vo vieweri (193 ms).",
     ]);
-    // Tak, ako ich spojí klient: odkaz ostane celý a JSON sa dá prečítať.
+        // As the client joins them: the link stays whole and the JSON can be read.
     const joined = content.map((c) => c.text).join("");
     expect(joined.split("\n")).toContain(link);
     expect(JSON.parse(content[0].text)).toEqual({ view: "kóty vo vieweri: 1" });

@@ -5,7 +5,7 @@ import type { IdsOpenReq } from "../viewer-ids";
 import { memoryIdsStore, type MemoryIdsStore } from "./testing";
 import { execIdsTool, saveFromViewer, type IdsOpenOutcome, type IdsViewerDeps } from "./tools";
 
-/** IDS z viewera (D-162 host PR2): `open`, `from_viewer`, zápis `IDS_SAVE`; motor je skutočný @ifc-lite/mcp, viewer je náhrada. */
+/** IDS from the viewer (D-162 host PR2): `open`, `from_viewer`, the `IDS_SAVE` write; the engine is the real @ifc-lite/mcp, the viewer is a stand-in. */
 
 const U = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 
@@ -37,7 +37,7 @@ const LIBRARY_XML = `<?xml version="1.0" encoding="UTF-8"?>
 interface Harness {
   store: MemoryIdsStore;
   opens: IdsOpenReq[];
-  /** Čo viewer odpovie na `view_state`. */
+    /** What the viewer answers to `view_state`. */
   state: { current: unknown };
   openOutcome: { current: IdsOpenOutcome };
   run: (args: Record<string, unknown>) => Promise<{ text: string; isError: boolean; json: Record<string, any> }>; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -61,7 +61,7 @@ function setup(): Harness {
     try {
       json = JSON.parse(r.text);
     } catch {
-      /* chyba vstupu je obyčajný text */
+            /* input error is plain text */
     }
     return { ...r, json };
   };
@@ -73,7 +73,7 @@ async function seedLibrary(store: MemoryIdsStore) {
   await store.addVersion(doc.id, { xml: LIBRARY_XML, sha256: "h", title: doc.title, ids_version: "1.0", audit: null, author: "import", source: "import", note: null }, null);
 }
 
-/** Vytvorí pracovné IDS a vráti jeho XML (základ pre úpravu vo vieweri). */
+/** Creates a working IDS and returns its XML (the basis for an edit in the viewer). */
 async function seedChat(h: Harness, code = "CHAT-STENY") {
   await h.run({ action: "create", code, title: "Steny", ops: specOps(U(1), U(2), U(3)) });
   const g = await h.run({ action: "get", ids: code, include_xml: true });
@@ -142,7 +142,7 @@ describe("ids_document from_viewer (D-162)", () => {
     expect(r.json).toMatchObject({ saved: true, code: "CHAT-STENY", version: 2, created: false, previous_version: 1 });
     expect(h.store.rows.at(-1)).toMatchObject({ version: 2, source: "viewer", author: "Viewer (AIM)" });
     expect(h.store.docs[0].title).toBe("Steny po ručnej úprave");
-    // Claude potom upravuje ďalej nad poslednou verziou, bez konfliktu.
+        // Claude then keeps editing over the latest version, without a conflict.
     const op = [{ kind: "doc.setInfo", payload: { field: "version", value: "3" } }];
     expect((await h.run({ action: "apply_ops", ids: "CHAT-STENY", ops: op })).json).toMatchObject({ saved: true, version: 3 });
   });

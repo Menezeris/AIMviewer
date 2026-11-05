@@ -1,4 +1,4 @@
-/** Pomôcky testov IDS dokumentov (D-162): úložisko v pamäti so správaním DB (jedinečný kód, nové číslo verzie). */
+/** Helpers of IDS document tests (D-162): an in-memory store with DB behaviour (unique code, new version number). */
 
 import type { IdsLibraryStore, ModelRun } from "./library";
 import {
@@ -89,7 +89,7 @@ export function memoryIdsStore(): MemoryIdsStore {
     async addVersion(documentId, write, baseVersion) {
       const doc = docs.find((d) => d.id === documentId);
       if (!doc) throw new Error("dokument neexistuje");
-      // Rovnaké pravidlá ako trigger v DB: knižnica len importom, chat len chat a viewer.
+            // Same rules as the trigger in the DB: library only by import, chat only chat and viewer.
       if (doc.origin === "library" && write.source !== "import") throw new Error("knižničná snímka IDS je len na čítanie (create derived_from)");
       if (doc.origin === "chat" && write.source === "import") throw new Error("import patrí len knižničnej snímke IDS");
       const latest = latestRow(documentId)?.version ?? 0;
@@ -112,12 +112,12 @@ export function memoryIdsStore(): MemoryIdsStore {
   };
 }
 
-/** Úložisko knižnice (D-182) v pamäti nad `MemoryIdsStore`: modely, väzby, revízie, behy po modeloch. */
+/** In-memory library store (D-182) on top of `MemoryIdsStore`: models, links, revisions, per-model runs. */
 export interface MemoryLibraryOptions {
   containers?: Array<{ id: string; model: string; identification?: string; name?: string | null }>;
-  /** Všetky revízie modelov {model: [revízie]}, aktuálna je posledná. */
+    /** All model revisions {model: [revisions]}, the current one is the last. */
   revisions?: Record<string, number[]>;
-  /** Simulácia DB pred migráciou D-182: väzby nie sú. */
+    /** Simulation of the DB before migration D-182: no links. */
   schemaMissing?: boolean;
 }
 
