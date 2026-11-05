@@ -8,7 +8,7 @@ import { orderTerms, pageInfo, parseRelated, sortRows } from "./query-view";
 
 const { db } = vi.hoisted(() => ({ db: { tables: {} as Record<string, Record<string, unknown>[]>, calls: [] as string[] } }));
 
-// Napodobená PostgREST: filtre, poradie a range nad riadkami v pamäti (D-126).
+// Mocked PostgREST: filters, order and range over in-memory rows (D-126).
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/supabase/server", () => {
   const builder = (name: string, cols: string, opts?: { count?: string; head?: boolean }) => {
@@ -58,7 +58,7 @@ const SPACE = uuid(9999);
 
 beforeEach(() => {
   db.calls = [];
-  // 139 vyústiek v náhodnom poradí (DB bez order vracia ľubovoľne), 133 hrán na priestor.
+  // 139 terminals in random order (a DB without order returns arbitrarily), 133 edges per space.
   const terminals = Array.from({ length: 139 }, (_, i) => ({
     id: uuid(((i * 37) % 139) + 1),
     object_type: "asset",

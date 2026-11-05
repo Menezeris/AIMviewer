@@ -3,11 +3,11 @@ import { describe, expect, it, vi } from "vitest";
 import { TEST_PROJECT } from "@/lib/project/testing";
 
 const { ROWS } = vi.hoisted(() => ({
-  // 139 vyústiek ako v ASR+VZT (eval D-126, N2), id zoradené.
+  // 139 terminals as in ASR+VZT (eval D-126, N2), ids sorted.
   ROWS: Array.from({ length: 139 }, (_, i) => ({
     id: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
     object_type: "asset",
-    // Dĺžky ako na produkcii: object_ref je IFC GlobalId (22 znakov), meno kód vyústky.
+    // Lengths as in production: object_ref is an IFC GlobalId (22 characters), the name is the terminal code.
     object_ref: `21EwBzpoD2audfgTy${String(i).padStart(5, "0")}`,
     name: `VV.03.02.${String(i).padStart(3, "0")}`,
     ifc_type: "IfcAirTerminal",
@@ -15,7 +15,7 @@ const { ROWS } = vi.hoisted(() => ({
   })) as Record<string, unknown>[],
 }));
 
-// Server-only moduly (D-026); objects vie is / ilike / order / range s presným počtom ako PostgREST.
+// Server-only modules (D-026); objects supports is / ilike / order / range with an exact count like PostgREST.
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/supabase/server", () => {
   const table = () => {
@@ -56,7 +56,7 @@ describe("search_objects mode=list stránkuje (eval D-126, N2)", () => {
       pages += 1;
     }
     expect(new Set(seen).size).toBe(139);
-    // 139 pri strope 100 sú aspoň 2 strany; bez vynechaných stĺpcov boli 3 (63 riadkov na stranu).
+    // 139 with a cap of 100 are at least 2 pages; without omitted columns there were 3 (63 rows per page).
     expect(pages).toBe(2);
   });
 

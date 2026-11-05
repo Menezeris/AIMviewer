@@ -12,15 +12,15 @@ import {
 } from "./provider";
 
 /**
- * Anthropic Messages API cez čistý `fetch` (D-056) — bez SDK, žiadna nová
- * dependency. Kľúč z `ANTHROPIC_API_KEY`, model z `LLM_MODEL`.
+ * Anthropic Messages API via plain `fetch` (D-056) - without an SDK, no new
+ * dependency. Key from `ANTHROPIC_API_KEY`, model from `LLM_MODEL`.
  */
 
 const DEFAULT_MODEL = "claude-sonnet-5";
 const API_URL = "https://api.anthropic.com/v1/messages";
 const API_VERSION = "2023-06-01";
 
-/** Naše neutrálne bloky → Anthropic wire formát. */
+/** Our neutral blocks -> Anthropic wire format. */
 function toWireContent(blocks: ContentBlock[]): unknown[] {
   return blocks.map((b) => {
     switch (b.type) {

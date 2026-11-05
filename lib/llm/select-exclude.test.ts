@@ -1,6 +1,6 @@
 /**
- * #242: show_in_3d select=true z filtra (ifc_type...) a #246: style_in_3d hide s výnimkou
- * (exclude_*) nad napodobenou DB; kontroluje sa URL akcia (ops), ktorú dostane viewer.
+ * #242: show_in_3d select=true from a filter (ifc_type...) and #246: style_in_3d hide with an exception
+ * (exclude_*) over a mocked DB; the URL action (ops) that the viewer receives is checked.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 

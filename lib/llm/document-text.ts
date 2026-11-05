@@ -1,13 +1,13 @@
 /**
- * Text dokumentov s polohou na strane (D-123) - čisté funkcie pre `search_documents`.
+ * Text of documents with position on the page (D-123) - pure functions for `search_documents`.
  *
- * `document_pages.blocks` = riadky textu strany s bbox v % strany (počiatok vľavo
- * hore), zapisuje ich `etl/pdf_text.py`. Odtiaľto tool vracia výrezy, ktoré sa
- * dajú dať priamo do `open_drawing region` (D-117) a tým ukázať miesto vo výkrese.
- * D-169: riadky strany bez textovej vrstvy číta OCR; nesú `src: "ocr"` a `conf` (0 až 1).
+ * `document_pages.blocks` = text rows of the page with a bbox in % of the page (origin top
+ * left), written by `etl/pdf_text.py`. From here the tool returns crops that can
+ * be passed directly to `open_drawing region` (D-117) and thus show the place in the drawing.
+ * D-169: rows of a page without a text layer are read by OCR; they carry `src: "ocr"` and `conf` (0 to 1).
  */
 
-/** Riadok textu strany: t = text, x/y/w/h = bbox v % strany; src/conf len pri OCR (D-169). */
+/** Text row of the page: t = text, x/y/w/h = bbox in % of the page; src/conf only for OCR (D-169). */
 export interface TextBlock {
   t: string;
   x: number;
@@ -18,10 +18,10 @@ export interface TextBlock {
   conf?: number;
 }
 
-/** Zdroj textu strany (D-169): textová vrstva PDF alebo OCR s istotou 0 až 1. */
+/** Source of the page text (D-169): the PDF text layer or OCR with confidence 0 to 1. */
 export type PageSource = { source: "text" } | { source: "ocr"; confidence: number };
 
-/** Výrez strany v % v tvare parametra `open_drawing region` (D-117). */
+/** Crop of the page in % in the shape of the `open_drawing region` parameter (D-117). */
 export interface PageRegion {
   x: number;
   y: number;
@@ -31,32 +31,32 @@ export interface PageRegion {
 
 export interface BlockMatch {
   text: string;
-  /** Presná poloha riadku na strane (v %). */
+  /** Exact position of the row on the page (in %). */
   bbox: PageRegion;
-  /** Výrez okolo riadku pre open_drawing region (najmenej MIN_REGION % na os). */
+  /** Crop around the row for open_drawing region (at least MIN_REGION % per axis). */
   region: PageRegion;
-  /** D-169: riadok z OCR a jeho istota; pri textovej vrstve chýba. */
+  /** D-169: row from OCR and its confidence; absent with a text layer. */
   source?: "ocr";
   confidence?: number;
 }
 
-/** Najmenší výrez na os v %: menší by kartu priblížil tak, že stratí kontext. */
+/** Smallest crop per axis in %: a smaller one would zoom the card in so that it loses context. */
 export const MIN_REGION = 15;
-/** Strop textu strany vo výsledku (výkres pôdorysu má okolo 11-19 tis. znakov). */
+/** Cap of the page text in the result (a floor plan drawing has around 11-19 thousand characters). */
 export const PAGE_TEXT_CAP = 20_000;
-/** Strop riadkov s polohou vo výsledku (pôdorys 1NP má okolo 1 100 riadkov). */
+/** Cap of rows with position in the result (the 1NP floor plan has around 1 100 rows). */
 export const PAGE_BLOCKS_CAP = 1_500;
 
 const r1 = (v: number) => Math.round(v * 10) / 10;
 
-/** Malé písmená bez diakritiky - rovnako ako `lower(f_unaccent())` v RPC. */
+/** Lowercase letters without diacritics - the same as `lower(f_unaccent())` in the RPC. */
 export function foldText(s: string): string {
   return s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 }
 
 /**
- * Slová dopytu ako prefixy, rovnako ako RPC `search_documents` (D-123): slovo z
- * písmen od 6 znakov stratí posledné 2 (skloňovanie), kódy a čísla ostávajú celé.
+ * Query words as prefixes, the same as the RPC `search_documents` (D-123): a word of
+ * letters from 6 characters loses the last 2 (inflection), codes and numbers stay whole.
  */
 export function queryStems(q: string): string[] {
   const words = foldText(q)
@@ -67,7 +67,7 @@ export function queryStems(q: string): string[] {
   return [...new Set(stems)];
 }
 
-/** Platný riadok z JSONB (ETL ho píše, ale DB je mimo typovej kontroly). */
+/** Valid row from JSONB (ETL writes it, but the DB is outside type checking). */
 export function parseBlocks(raw: unknown): TextBlock[] {
   if (!Array.isArray(raw)) return [];
   return raw.filter(
@@ -80,9 +80,9 @@ export function parseBlocks(raw: unknown): TextBlock[] {
 }
 
 /**
- * Zdroj textu strany z jej riadkov (D-169). Stĺpec na to v DB nie je: ETL číta OCR len stranu
- * bez textovej vrstvy, takže strana je celá z OCR alebo celá z PDF a stačí jej riadky.
- * Istota strany = priemer `conf` riadkov vážený dĺžkou textu (ako `page_conf` v `etl/ocr.py`).
+ * Source of the page text from its rows (D-169). There is no column for it in the DB: ETL reads OCR only for a page
+ * without a text layer, so a page is entirely from OCR or entirely from the PDF and its rows suffice.
+ * Page confidence = average of the rows' `conf` weighted by text length (like `page_conf` in `etl/ocr.py`).
  */
 export function pageSource(blocks: TextBlock[]): PageSource {
   const ocr = blocks.filter((b) => b.src === "ocr");
@@ -92,7 +92,7 @@ export function pageSource(blocks: TextBlock[]): PageSource {
   return { source: "ocr", confidence: total > 0 ? Math.round((sum / total) * 100) / 100 : 0 };
 }
 
-/** Výrez okolo bboxu: najmenej `min` % na os, so stredom v bboxe, orezaný do strany. */
+/** Crop around a bbox: at least `min` % per axis, centered on the bbox, clipped to the page. */
 export function regionAround(b: Pick<TextBlock, "x" | "y" | "w" | "h">, min = MIN_REGION): PageRegion {
   const axis = (start: number, size: number): [number, number] => {
     const len = Math.min(100, Math.max(size + 4, min));
@@ -105,8 +105,8 @@ export function regionAround(b: Pick<TextBlock, "x" | "y" | "w" | "h">, min = MI
 }
 
 /**
- * Výrez pre open_drawing, keď prišli len rámiky (D-123): obal všetkých rámikov
- * (v %, tvar `w/h` ako DocRegion vo viewer-ops), najmenej MIN_REGION na os.
+ * Crop for open_drawing when only frames came (D-123): the envelope of all frames
+ * (in %, shape `w/h` like DocRegion in viewer-ops), at least MIN_REGION per axis.
  */
 export function highlightsRegion(rects: { x: number; y: number; w: number; h: number }[]) {
   const x0 = Math.min(...rects.map((r) => r.x));
@@ -118,9 +118,9 @@ export function highlightsRegion(rects: { x: number; y: number; w: number; h: nu
 }
 
 /**
- * Riadky strany, ktoré obsahujú slová dopytu. Najprv riadky so všetkými slovami;
- * keď žiadny nie je (napr. "1.05 Technická miestnosť" sú vo výkrese dva riadky),
- * riadky s najväčším počtom slov. Poradie zhora nadol, zľava doprava.
+ * Rows of the page that contain the query words. First rows with all the words;
+ * when there is none (e.g. "1.05 Technická miestnosť" is two rows in the drawing),
+ * rows with the largest number of words. Order top to bottom, left to right.
  */
 export function matchBlocks(blocks: TextBlock[], q: string, max = 5): BlockMatch[] {
   const stems = queryStems(q);
@@ -150,7 +150,7 @@ function ocrFields(b: TextBlock): { source?: "ocr"; confidence?: number } {
   return b.src === "ocr" ? { source: "ocr", ...(Number.isFinite(b.conf) ? { confidence: b.conf } : {}) } : {};
 }
 
-/** Riadky do výsledku čítania strany: kompaktne, zaokrúhlené na 0,1 %. */
+/** Rows into the page reading result: compact, rounded to 0.1 %. */
 export function compactBlocks(blocks: TextBlock[], cap = PAGE_BLOCKS_CAP) {
   return blocks.slice(0, cap).map((b) => ({
     t: b.t,

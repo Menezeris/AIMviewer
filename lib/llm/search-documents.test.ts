@@ -7,7 +7,7 @@ const { DOC, state } = vi.hoisted(() => ({
   state: { rpcArgs: [] as Record<string, unknown>[], hasText: true, ocr: false },
 }));
 
-// Moduly sú server-only (D-026); DB vráti dokument, jeho stranu a zhodu RPC.
+// Server-only modules (D-026); the DB returns the document, its page and the RPC match.
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/supabase/server", () => {
   const docRow = {
@@ -28,7 +28,7 @@ vi.mock("@/lib/supabase/server", () => {
       { t: "250", x: 50, y: 50, w: 1, h: 1 },
     ],
   };
-  // D-169: titulka bez textovej vrstvy prečítaná OCR (riadky so src a conf, alias src z prvého riadku).
+  // D-169: a title page without a text layer read by OCR (rows with src and conf, src alias from the first row).
   const ocrPage = {
     document_id: DOC,
     page: 1,
@@ -95,7 +95,7 @@ describe("search_documents: čítanie strany a výrezy (D-123)", () => {
       { text: "1.05", bbox: { x: 38.3, y: 56.1, width: 0.8, height: 1.2 }, region: expect.objectContaining({ width: 15, height: 15 }) },
     ]);
 
-    // Výrez sa dá priamo použiť v open_drawing (D-117) - ten istý tvar {x, y, width, height}.
+    // The crop can be used directly in open_drawing (D-117) - the same shape {x, y, width, height}.
     expect(Object.keys(hit.regions[0].region).sort()).toEqual(["height", "width", "x", "y"]);
   });
 
@@ -108,7 +108,7 @@ describe("search_documents: čítanie strany a výrezy (D-123)", () => {
     expect(res.blocks).toHaveLength(3);
     const plain = JSON.parse((await rt.exec("search_documents", { document_id: DOC })).content);
     expect(plain.blocks).toBeUndefined();
-    // Textová vrstva: žiadny príznak OCR, výsledok sa nemení.
+    // Text layer: no OCR flag, the result does not change.
     expect(res.source).toBeUndefined();
     expect(res.ocr_pages).toBeUndefined();
     expect(res.blocks[0].src).toBeUndefined();

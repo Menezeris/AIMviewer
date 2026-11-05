@@ -33,9 +33,9 @@ import {
 } from "../viewer-ops";
 
 /**
- * Čistá logika tools pohľadu (D-083 fáza 1): vstup toolu + dohľadané GUID
- * podlažia a cieľov -> viewer ops a odpoveď pre model. Dohľadanie v DB robí
- * `view-tools.ts`; tu sa nič nečíta ani nezapisuje.
+ * Pure logic of the view tools (D-083 phase 1): tool input + looked-up GUIDs
+ * of storeys and targets -> viewer ops and the answer for the model. Looking up in the DB is done by
+ * `view-tools.ts`; nothing is read or written here.
  */
 
 export interface ViewPlan {
@@ -52,7 +52,7 @@ function num(raw: unknown): number | undefined {
   return typeof raw === "number" && Number.isFinite(raw) ? raw : undefined;
 }
 
-/** Podlažie pre rez: label, GUID a IfcBuildingStorey.Elevation z AIM DB (jednotky modelu). */
+/** Storey for the section: label, GUID and IfcBuildingStorey.Elevation from the AIM DB (model units). */
 export interface SectionFloor {
   label: string;
   guid: string;
@@ -70,7 +70,7 @@ export function planSection(
   }
   const showWidget = typeof input.show_widget === "boolean" ? input.show_widget : undefined;
   if (action === "widget") {
-    // Len widget aktívneho rezu, rez ostáva (#63).
+    // Only the widget of the active section, the section stays (#63).
     if (showWidget === undefined) throw new ViewInputError("action=widget potrebuje show_widget (true/false).");
     return {
       ops: [sectionGizmoOp(showWidget)],
@@ -95,7 +95,7 @@ export function planSection(
   }
 
   if (hasTargets || fitRaw !== undefined) {
-    // Rez cez prvky (D-085): viewer zoberie ich obálku a rovinu dá do stredu.
+    // Section through elements (D-085): the viewer takes their envelope and puts the plane in the middle.
     const fit = (fitRaw ?? "center") as SectionFit;
     if (!(SECTION_FITS as readonly string[]).includes(fit)) throw new ViewInputError("fit musí byť along, across alebo center.");
     if (targetGuids.length === 0) throw new ViewInputError("Cieľ rezu sa nenašiel alebo nemá IFC GUID (target_ids_or_refs / global_ids).");
@@ -141,7 +141,7 @@ export function planSection(
           offset_m: offsetM,
           flipped,
           ...widgetOut,
-          // D-092: viewer počíta výšku sám; elevácia z AIM DB slúži na kontrolu jeho polohy roviny.
+          // D-092: the viewer computes the height itself; the elevation from the AIM DB serves to check the position of its plane.
           ...(floor.elevation != null ? { floor_elevation_model_units: floor.elevation } : {}),
         },
       },
@@ -162,8 +162,8 @@ export function planSection(
 }
 
 /**
- * Podklady PDF v 3D (D-133 doplnok): `underlays_3d` = true zobrazí, false skryje v 3D plátne. Je to stav
- * viewera, nie `visible` kalibrácie (to sa ukladá do DB a skrýva aj 2D). Bez parametra null.
+ * PDF underlays in 3D (D-133 addendum): `underlays_3d` = true shows, false hides in the 3D canvas. It is a state
+ * of the viewer, not the `visible` of the calibration (that is stored in the DB and hides 2D too). Without the parameter null.
  */
 export function planUnderlays3d(input: Record<string, unknown>): { op: string; label: string; result: { underlays_3d: boolean } } | null {
   const raw = input.underlays_3d;
@@ -173,8 +173,8 @@ export function planUnderlays3d(input: Record<string, unknown>): { op: string; l
 }
 
 /**
- * Poloha a smer kamery na kalibrovanom PDF (D-161 bod 8, #282): `plan_position` = true zobrazí bodku a výsek
- * smeru pohľadu na PDF v záložke alebo dlaždici, false skryje. Stav viewera; čítanie `get_viewer_state.plan_position`.
+ * Position and direction of the camera on a calibrated PDF (D-161 point 8, #282): `plan_position` = true shows a dot and a sector
+ * of the view direction on the PDF in a tab or tile, false hides. Viewer state; read via `get_viewer_state.plan_position`.
  */
 export function planPlanPosition(input: Record<string, unknown>): { op: string; label: string; result: { plan_position: boolean } } | null {
   const raw = input.plan_position;
@@ -186,21 +186,21 @@ export function planPlanPosition(input: Record<string, unknown>): { op: string; 
 export function planViewMode(
   input: Record<string, unknown>,
   floor: { label: string; guid: string } | null,
-  /** Výkres podlažia vybraný hostom pre mode=split (D-176); bez neho vyberá viewer. */
+  /** Storey drawing chosen by the host for mode=split (D-176); without it the viewer chooses. */
   drawing?: { documentId: string; name: string; discipline: string | null; chosen_by: "discipline" | "preference"; alternatives: { name: string; discipline: string | null }[] } | null,
 ): ViewPlan {
   const mode = String(input.mode ?? "").trim() as ViewMode;
   if (!(VIEW_MODES as readonly string[]).includes(mode)) throw new ViewInputError("mode musí byť 3d, 2d alebo split.");
   if (input.reset === true) {
     if (mode !== "3d") throw new ViewInputError("reset platí len s mode=3d.");
-    // Zloží existujúce ops: bez rezu, 3D, všetko viditeľné, bez farieb, bez výberu (D-102), izometria.
+    // Composes the existing ops: no section, 3D, everything visible, no colors, no selection (D-102), isometric.
     return {
       ops: [SECTION_CLEAR_OP, viewModeOp("3d"), "show_all::", "reset_colors::", "clear_selection::", "clear_focus::", cameraOp("iso")],
       label: "3D: pôvodný pohľad",
       result: { ok: true, reset: true },
     };
   }
-  // D-161: 2D nie je režim. `2d` = kamera zhora a rez na bežnom 3D, `split` = to isté a dlaždice 3D | výkres PDF.
+  // D-161: 2D is not a mode. `2d` = camera from above and a section on the ordinary 3D, `split` = the same and tiles 3D | PDF drawing.
   const note = {
     "3d": "Perspektívna kamera na bežnom 3D.",
     "2d": "Pohľad zhora na podlažie na bežnom 3D (ortografická kamera, vodorovný rez 1,2 m nad podlahou alebo uložený pohľad podlažia); bez zámku, orbit a nástroje fungujú.",
@@ -221,7 +221,7 @@ export function planViewMode(
   };
 }
 
-/** `panel_layout` (D-172, #320): {panel, width_pct?, side?}, aspoň jedno z posledných dvoch. */
+/** `panel_layout` (D-172, #320): {panel, width_pct?, side?}, at least one of the last two. */
 function panelLayoutOf(raw: unknown): PanelLayoutRequest {
   const hint = `panel_layout = {panel, width_pct: ${PANEL_WIDTH_PCT.min} až ${PANEL_WIDTH_PCT.max}, side: ${PANEL_SIDES.join(" | ")}} (aspoň jedno z width_pct a side).`;
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new ViewInputError(hint);
@@ -244,10 +244,10 @@ function panelLayoutOf(raw: unknown): PanelLayoutRequest {
 }
 
 /**
- * Panely viewera (D-127, D-150): `panels` = {lens: "close", bcf: "open", ...}, `all` len "close". Meno je id panela
- * z registra forku; tvar mena kontroluje host, existenciu viewer (neznáme nahlási v `APPLIED`, zoznam je vo
- * `view_state.panels`). D-172 (#320): `panel_layout` = {panel, width_pct?, side?} nastaví šírku a stranu panela v tej
- * istej správe (`panels` je potom voliteľné, aspoň jedno z dvoch). Bez oboch null; chybný vstup = ViewInputError (model ho opraví).
+ * Viewer panels (D-127, D-150): `panels` = {lens: "close", bcf: "open", ...}, `all` only "close". The name is the panel id
+ * from the fork registry; the shape of the name is checked by the host, existence by the viewer (unknown ones it reports in `APPLIED`, the list is in
+ * `view_state.panels`). D-172 (#320): `panel_layout` = {panel, width_pct?, side?} sets the width and side of a panel in the same
+ * message (`panels` is then optional, at least one of the two). Without both null; bad input = ViewInputError (the model fixes it).
  */
 export function planPanels(input: Record<string, unknown>): { op: string; label: string; result: { panels?: PanelsRequest; panel_layout?: { panel: string; width_pct?: number; side?: PanelSide } } } | null {
   const raw = input.panels;
@@ -279,7 +279,7 @@ export function planPanels(input: Record<string, unknown>): { op: string; label:
   };
 }
 
-/** Panel_scroll ako reťazec (D-146, panel vlastností) alebo objekt {panel, to | item | percent} (D-150). */
+/** Panel_scroll as a string (D-146, properties panel) or an object {panel, to | item | percent} (D-150). */
 function scrollTargetOf(raw: unknown): PanelScrollTarget {
   if (typeof raw === "string") {
     if (!(PANEL_SCROLLS as readonly string[]).includes(raw.trim())) throw new ViewInputError(`panel_scroll: ${PANEL_SCROLLS.join(", ")}.`);
@@ -304,8 +304,8 @@ function scrollTargetOf(raw: unknown): PanelScrollTarget {
 }
 
 /**
- * Posun obsahu panela (D-146, D-150): `panel_scroll` = up | down | top | bottom (panel vlastností), alebo
- * {panel, to | item | percent}: na položku podľa textu alebo polohu v %. Bez neho null; chybný vstup = ViewInputError.
+ * Scrolling the panel content (D-146, D-150): `panel_scroll` = up | down | top | bottom (properties panel), or
+ * {panel, to | item | percent}: to an item by text or a position in %. Without it null; bad input = ViewInputError.
  */
 export function planPanelScroll(input: Record<string, unknown>): { op: string; label: string; result: { panel_scroll: PanelScrollTarget | string } } | null {
   const raw = input.panel_scroll;
@@ -316,7 +316,7 @@ export function planPanelScroll(input: Record<string, unknown>): { op: string; l
   return { op: panelScrollOp(target), label: `Panel ${panel}: ${what}`, result: { panel_scroll: typeof raw === "string" ? raw.trim() : target } };
 }
 
-/** Zoom obsahu panela (D-150): `panel_zoom` = {panel?, zoom: in | out | reset | 0,5 až 2,5}. Bez neho null. */
+/** Zoom of the panel content (D-150): `panel_zoom` = {panel?, zoom: in | out | reset | 0.5 to 2.5}. Without it null. */
 export function planPanelZoom(input: Record<string, unknown>): { op: string; label: string; result: { panel_zoom: { panel?: string; zoom: PanelZoom } } } | null {
   const raw = input.panel_zoom;
   if (raw === undefined || raw === null) return null;

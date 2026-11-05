@@ -3,8 +3,8 @@ import type { ListColumnWire, ListHostKey } from "../viewer-list";
 import { StyleInputError } from "./style-plan";
 
 /**
- * Stĺpce `open_list` (D-111) zadané slovom -> `ListColumnWire`. Čistá funkcia bez
- * DB; tool je v `list-tool.ts`.
+ * Columns of `open_list` (D-111) given as a word -> `ListColumnWire`. A pure function without
+ * DB; the tool is in `list-tool.ts`.
  */
 
 const ATTRIBUTES = new Map(
@@ -18,7 +18,7 @@ const SPATIAL = new Map([
   ["miestnost", "Container"],
   ["building", "Building"],
   ["site", "Site"],
-  // Vzťahy z IFC súboru (D-171, #277): bunka nesie názvy druhej strany, viac hodnôt oddelených ", ".
+  // Relations from the IFC file (D-171, #277): the cell carries the names of the other side, several values separated by ", ".
   ["referenced", "Referenced"],
   ["space_referenced", "Referenced"],
   ["rel_referenced_in_spatial_structure", "Referenced"],
@@ -31,7 +31,7 @@ const SPATIAL = new Map([
   ["rel_aggregates", "Aggregate"],
   ["relation.rel_aggregates", "Aggregate"],
 ]);
-/** Popis stĺpcov zo vzťahov (inak by hlavička bola len "Referenced"). */
+/** Description of columns from relations (otherwise the header would be just "Referenced"). */
 const SPATIAL_LABELS = new Map([
   ["Storey", "Podlažie"],
   ["Referenced", "Priestor (referenced)"],
@@ -39,8 +39,8 @@ const SPATIAL_LABELS = new Map([
   ["Aggregate", "Zostava (aggregate)"],
 ]);
 /**
- * Odvodené väzby z DB (D-174, #277; `v_space_elements` z geometrie, D-167): hodnoty počíta host podľa GlobalId.
- * Slová sú zámerne iné než `space_referenced` / `space_boundary` (tie čítajú IFC súbor), aby sa zdroj nepomiešal.
+ * Derived links from the DB (D-174, #277; `v_space_elements` from geometry, D-167): values are computed by the host by GlobalId.
+ * The words are deliberately different from `space_referenced` / `space_boundary` (those read the IFC file), so that the source is not mixed up.
  */
 const HOST = new Map<string, [ListHostKey, string]>([
   ["derived_referenced", ["derived_referenced", "Priestor (odvodený z DB)"]],
@@ -50,7 +50,7 @@ const HOST = new Map<string, [ListHostKey, string]>([
   ["space_boundary_derived", ["derived_boundary", "Hranica priestoru (odvodená z DB)"]],
   ["space_boundary_db", ["derived_boundary", "Hranica priestoru (odvodená z DB)"]],
 ]);
-/** Meno a popis ako stĺpce builderu panela Lists (inak má stĺpec prázdnu hlavičku aj v exporte). */
+/** Name and description as columns of the Lists panel builder (otherwise the column has an empty header, also in the export). */
 const SIMPLE = new Map<string, [ListColumnWire["s"], string]>([
   ["material", ["material", "Material"]],
   ["classification", ["classification", "Classification"]],
@@ -59,7 +59,7 @@ const SIMPLE = new Map<string, [ListColumnWire["s"], string]>([
 
 const fold = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 
-/** Stĺpec zadaný slovom (`Name`, `storey`, `Pset_DoorCommon.FireRating`, `Qto_DoorBaseQuantities.Width`). */
+/** Column given as a word (`Name`, `storey`, `Pset_DoorCommon.FireRating`, `Qto_DoorBaseQuantities.Width`). */
 export function parseListColumn(raw: string): ListColumnWire {
   const text = raw.trim();
   const key = fold(text);

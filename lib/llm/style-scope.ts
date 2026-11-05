@@ -27,23 +27,23 @@ import {
 } from "./style-plan";
 
 /**
- * Rozšírený `style_in_3d` (D-096): systém, zóna a podlažie ako filtre (členovia
- * sa rozbalia v grafe AIM), všetky kritériá ako AND, viac skupín s vlastnou
- * farbou v jednom volaní a počty na skupinu. Čistá logika je v `style-plan.ts`.
+ * Extended `style_in_3d` (D-096): system, zone and storey as filters (members
+ * are expanded in the AIM graph), all criteria as AND, several groups with their own
+ * color in one call and counts per group. The pure logic is in `style-plan.ts`.
  *
- * Členstvo: systém a IfcGroup = `rel_assigns_to_group` (člen -> skupina,
- * rekurzívne cez vnorené skupiny); IfcZone a IfcSpatialZone = miestnosti a vždy
- * aj prvky v nich alebo dotýkajúce sa ich (contained + referenced); podlažie = miestnosti podlažia a prvky natívne
- * na podlaží alebo v jeho miestnostiach (bez odvodených referencií, aby prvok
- * nepatril na dve podlažia); dokument = objekty, ktorých sa týka, aj zdedené cez
- * nositeľa (`v_object_documents`, D-104 krok 4), voliteľne len jedna strana.
+ * Membership: system and IfcGroup = `rel_assigns_to_group` (member -> group,
+ * recursively through nested groups); IfcZone and IfcSpatialZone = spaces and always
+ * also the elements in them or touching them (contained + referenced); storey = spaces of the storey and elements native
+ * to the storey or in its spaces (without derived references, so that an element
+ * does not belong to two storeys); document = objects it concerns, also inherited via the
+ * carrier (`v_object_documents`, D-104 step 4), optionally only one page.
  */
 
 const IN_CHUNK = 100;
 const CLOSURE_DEPTH = 6;
-/** Strop kandidátov bez množinového kritéria (len trieda/predefined/query). */
+/** Cap of candidates without a set criterion (only class/predefined/query). */
 const ATTRIBUTE_ONLY_CAP = 5000;
-/** Typy uzlov, ktoré majú v 3D geometriu, ktorú má zmysel farbiť. */
+/** Node types that have geometry in 3D worth coloring. */
 const STYLABLE_OBJECT_TYPES = new Set(["asset", "space", "spatial_zone"]);
 const GROUPISH_TYPES = ["zone", "spatial_zone", "group"];
 const IFC_GUID_RE = /^[0-9A-Za-z_$]{22}$/;
@@ -59,9 +59,9 @@ const strList = (v: unknown): string[] =>
   Array.isArray(v) ? (v as unknown[]).map(str).filter(Boolean) : [];
 
 export interface ScopedStyleOptions {
-  /** IFC domény -> triedy (zdieľané s množinovým selektorom v `tools.ts`). */
+  /** IFC domains -> classes (shared with the set selector in `tools.ts`). */
   domainTypes: Record<string, string[]>;
-  /** Ops pridané za hlavné (výnimka pri hide, #246: show výnimiek po skrytí). */
+  /** Ops added after the main one (exception for hide, #246: show of the exceptions after hiding). */
   extraOps?: string[];
 }
 
@@ -78,7 +78,7 @@ export class ScopeResolver {
     private readonly projectId: string = currentProjectId(),
   ) {}
 
-  /** `.in()` po dávkach s úplným stránkovaním každej dávky. */
+  /** `.in()` in batches with full paging of every batch. */
   private async fetchIn<T>(
     table: string,
     select: string,
@@ -116,7 +116,7 @@ export class ScopeResolver {
     );
   }
 
-  /** Členovia skupín (rel_assigns_to_group člen -> skupina), rekurzívne. */
+  /** Members of groups (rel_assigns_to_group member -> group), recursively. */
   private async closure(rootIds: string[]): Promise<Set<string>> {
     const seen = new Set(rootIds);
     const members = new Set<string>();
@@ -125,7 +125,7 @@ export class ScopeResolver {
       const rows = await this.fetchIn<{ from_id: string | null }>("rel_assigns_to_group", "id, from_id", "to_id", frontier);
       const next: string[] = [];
       for (const r of rows) {
-        if (!r.from_id) continue; // člen bez uzla AIM (D-183 K3)
+        if (!r.from_id) continue; // member without an AIM node (D-183 K3)
         members.add(r.from_id);
         if (!seen.has(r.from_id)) {
           seen.add(r.from_id);
@@ -137,7 +137,7 @@ export class ScopeResolver {
     return members;
   }
 
-  /** Systémy podľa `system` (id, ref, názov, ObjectType) a `system_type` (predefined_type alebo ObjectType). */
+  /** Systems by `system` (id, ref, name, ObjectType) and `system_type` (predefined_type or ObjectType). */
   async pickSystems(f: StyleFilter): Promise<TypedRow[]> {
     this.systems ??= await this.nodesOfTypes(["system"]);
     const want = str(f.system);
@@ -159,7 +159,7 @@ export class ScopeResolver {
     return picked;
   }
 
-  /** Počet členov každého systému zvlášť (D-125): koľko prvkov pridal do farbenia. */
+  /** Number of members of each system separately (D-125): how many elements it added to the coloring. */
   async systemMemberCounts(systems: TypedRow[]): Promise<number[]> {
     return Promise.all(systems.map(async (s) => (await this.closure([s.id])).size));
   }
@@ -180,7 +180,7 @@ export class ScopeResolver {
     return this.allSystemMembers;
   }
 
-  /** Zóny (IfcZone, IfcSpatialZone, IfcGroup) podľa id, object_ref alebo názvu. */
+  /** Zones (IfcZone, IfcSpatialZone, IfcGroup) by id, object_ref or name. */
   async pickZones(want: string): Promise<TypedRow[]> {
     this.groupish ??= await this.nodesOfTypes(GROUPISH_TYPES);
     const picked = pickNamed(this.groupish, want);
@@ -202,22 +202,22 @@ export class ScopeResolver {
     const groupIds = picked.filter((z) => z.object_type !== "spatial_zone").map((z) => z.id);
     const spatialIds = picked.filter((z) => z.object_type === "spatial_zone").map((z) => z.id);
 
-    // Zóna = jej miestnosti (aj cez vnorené zóny) a VŽDY aj prvky v nich alebo tie, ktoré
-    // sa ich dotýkajú (contained + referenced inside/partial, D-080). Priamo z hrán, nie cez
-    // v_zone_elements, aby výsledok nezávisel od prepínača pravidla element_in_zone (Samuel).
+    // Zone = its spaces (also through nested zones) and ALWAYS also the elements in them or those that
+    // touch them (contained + referenced inside/partial, D-080). Directly from the edges, not through
+    // v_zone_elements, so that the result does not depend on the element_in_zone rule switch (Samuel).
     const ids = groupIds.length > 0 ? await this.closure(groupIds) : new Set<string>();
     for (const id of spatialIds) ids.add(id);
     const containers = [...ids];
     for (const rel of ["rel_contained_in_spatial_structure", "rel_referenced_in_spatial_structure"]) {
       const rows = await this.fetchIn<{ from_id: string }>(rel, "id, from_id", "to_id", containers);
-      for (const r of rows) if (r.from_id) ids.add(r.from_id); // prvok bez uzla AIM (D-183 K3)
+      for (const r of rows) if (r.from_id) ids.add(r.from_id); // element without an AIM node (D-183 K3)
     }
     return ids;
   }
 
   /**
-   * Dokument podľa id, object_ref alebo názvu (aj jeho časti, napr. 'D.1.1.03'); odkaz
-   * na časť dokumentu (strana skladby) len podľa id alebo presného object_ref.
+   * Document by id, object_ref or name (also its parts, e.g. 'D.1.1.03'); a reference
+   * to a part of a document (an assembly page) only by id or exact object_ref.
    */
   async pickDocument(want: string): Promise<TypedRow> {
     this.documents ??= await this.nodesOfTypes(["document", "document_reference"]);
@@ -238,14 +238,14 @@ export class ScopeResolver {
     );
   }
 
-  /** Objekty, ktorých sa dokument (alebo jeho strana) týka, aj zdedené cez nositeľa. */
+  /** Objects that a document (or its page) concerns, also inherited via the carrier. */
   async documentMembers(want: string, page: number | undefined): Promise<{ doc: TypedRow; ids: Set<string> }> {
     const doc = await this.pickDocument(want);
     const rows = await fetchDocumentObjectRows(this.projectId, doc, page);
     return { doc, ids: new Set(rows.filter((r) => STYLABLE_OBJECT_TYPES.has(r.object_type)).map((r) => r.object_id)) };
   }
 
-  /** Podlažie podľa id, object_ref alebo názvu (1NP = 1.NP = 1 NP). */
+  /** Storey by id, object_ref or name (1NP = 1.NP = 1 NP). */
   async pickFloor(want: string): Promise<NamedRow> {
     this.floors ??= await fetchAllPages<NamedRow>((from, to) =>
       this.db
@@ -274,7 +274,7 @@ export class ScopeResolver {
 
   async storeyMembers(want: string): Promise<{ ids: Set<string>; label: string }> {
     const floor = await this.pickFloor(want);
-    // Časť bez uzla AIM (D-183 K3) má from_id null.
+    // A part without an AIM node (D-183 K3) has from_id null.
     const spaces = (await this.fetchIn<{ from_id: string | null }>("rel_aggregates", "id, from_id", "to_id", [floor.id])).flatMap(
       (r) => (r.from_id ? [r.from_id] : []),
     );
@@ -285,7 +285,7 @@ export class ScopeResolver {
       "to_id",
       [floor.id, ...spaces],
     );
-    for (const r of contained) if (r.from_id) ids.add(r.from_id); // prvok bez uzla AIM (D-183 K3)
+    for (const r of contained) if (r.from_id) ids.add(r.from_id); // element without an AIM node (D-183 K3)
     return { ids, label: floor.object_ref ?? floor.name ?? want };
   }
 
@@ -305,7 +305,7 @@ export class ScopeResolver {
     return ids;
   }
 
-  /** Kandidáti len z atribútov (bez množinového kritéria): trieda / predefined / query. */
+  /** Candidates only from attributes (without a set criterion): class / predefined / query. */
   async attributeCandidates(types: string[], predefinedType: string, query: string): Promise<Set<string>> {
     if (types.length === 0 && !predefinedType && !query) {
       throw new StyleInputError(
@@ -337,7 +337,7 @@ export class ScopeResolver {
       activeOnly: false,
     });
     const out = new Map(rows.map((r) => [r.id, r.properties]));
-    // v_asset_effective nesie len assety; miestnosti a zóny majú psety priamo na objects.
+    // v_asset_effective carries only assets; spaces and zones have psets directly on objects.
     const rest = ids.filter((id) => !out.has(id));
     for (const r of await this.fetchIn<{ id: string; properties: unknown }>("objects", "id, properties", "id", rest)) {
       out.set(r.id, r.properties);
@@ -443,8 +443,8 @@ async function resolveGroup(
 }
 
 /**
- * Vykoná rozšírený `style_in_3d`; vráti odpoveď pre model a pridá jednu URL
- * akciu so všetkými operáciami (jedna navigácia = žiadna sa neprepíše).
+ * Executes the extended `style_in_3d`; returns the answer for the model and adds one URL
+ * action with all operations (one navigation = none gets overwritten).
  */
 export async function execScopedStyle(
   action: string,

@@ -1,6 +1,6 @@
 /**
- * Doménový prompt LLM vrstvy (D-056) — jeden zdroj pre `/api/ask` aj MCP
- * konektor (D-079). Zmena textu = zmena LLM vrstvy ⇒ evaly (D-057).
+ * Domain prompt of the LLM layer (D-056) - one source for `/api/ask` and the MCP
+ * connector (D-079). Changing the text = changing the LLM layer -> evals (D-057).
  */
 
 export const SYSTEM_PROMPT = `Si asistent AIM Viewera — Asset Information Model platformy pre správu
@@ -170,20 +170,20 @@ Postup podľa typu otázky:
 - Odpoveď je čistý text bez markdown formátovania (žiadne **, #, tabuľky).`;
 
 /**
- * Inštrukcie pre MCP klienta (Claude v aplikácii vedľa viewera, D-079). Klient
- * markdown vykreslí, takže pravidlo čistého textu odpadá (je na konci UI odsekov,
- * ktoré MCP nahradí); UI akcie sa nevrátia klientovi, ale odvysielajú do živého viewera.
+ * Instructions for the MCP client (Claude in the app next to the viewer, D-079). The client
+ * renders markdown, so the plain-text rule is dropped (it is at the end of the UI paragraphs
+ * that MCP replaces); UI actions are not returned to the client but broadcast to the live viewer.
  */
-/** Text pre MCP s motorom (D-115): search_all (AIM + IFC) namiesto search_everything (len AIM). */
+/** Text for MCP with the engine (D-115): search_all (AIM + IFC) instead of search_everything (AIM only). */
 export function withSearchAll(text: string): string {
   return text.replaceAll("search_everything", "search_all");
 }
 
 export function mcpInstructions(siteUrl: string, engine = false): string {
-  // Odseky o UI akciách z promptu chatu opakujú opisy toolov; MCP ich má krátko (D-102).
+  // The paragraphs about UI actions from the chat prompt repeat the tool descriptions; MCP has them short (D-102).
   const cut = SYSTEM_PROMPT.indexOf(UI_SECTION_MARKER);
   const chat = cut > 0 ? SYSTEM_PROMPT.slice(0, cut).trimEnd() : SYSTEM_PROMPT;
-  // D-115: s motorom hľadá text v grafe AIM aj v IFC súbore search_all; search_everything sa nevypisuje.
+  // D-115: with the engine, text is searched in the AIM graph and in the IFC file by search_all; search_everything is not listed.
   const text = `${chat}
 ${MCP_UI_RULES}
 
@@ -206,10 +206,10 @@ Kontext MCP (Claude vedľa viewera):
   return engine ? withSearchAll(text) : text;
 }
 
-/** Začiatok odsekov o UI akciách v `SYSTEM_PROMPT` (chat ich nesie celé, MCP nahradí `MCP_UI_RULES`). */
+/** Start of the paragraphs about UI actions in `SYSTEM_PROMPT` (chat carries them whole, MCP replaces them with `MCP_UI_RULES`). */
 export const UI_SECTION_MARKER = "- UI akcie: keď používateľ žiada niečo ZOBRAZIŤ";
 
-/** UI akcie pre MCP (D-102): to, čo opisy toolov nehovoria, plus pravidlá z meraní kola 3. */
+/** UI actions for MCP (D-102): what the tool descriptions do not say, plus rules from round 3 measurements. */
 const MCP_UI_RULES = `- Kód prvku (object_ref, meno ako VV.03.01.040 alebo SD04.0001, aj prvok len v IFC bez
   object_ref) daj PRIAMO ako cieľ toolu (id_or_ref, ids_or_refs, target_ids_or_refs, get_object)
   - server ho dohľadá v AIM aj v IFC. Nehľadaj ho najprv cez search_*; viacznačný kód
@@ -246,8 +246,8 @@ const MCP_UI_RULES = `- Kód prvku (object_ref, meno ako VV.03.01.040 alebo SD04
   až na pokyn; "späť na 3D" = set_view_mode(tab=3D).`;
 
 /**
- * Pripomienky a požiadavky na nové tools (D-090) - len MCP; issue v GitHube,
- * požiadavka na tool rovno spustí Claude Code session, ktorá ho stavia.
+ * Feedback and requests for new tools (D-090) - MCP only; a GitHub issue,
+ * a tool request directly starts a Claude Code session that builds it.
  */
 const FEEDBACK_RULES = `
 - Issues zakladáš LEN na výslovný pokyn používateľa ("zapíš to", "založ issue", "pošli to na Clauda",
@@ -268,8 +268,8 @@ const FEEDBACK_RULES = `
   reopen=true len na výslovný pokyn.`;
 
 /**
- * BCF témy nad modelmi federácie (D-099) - len MCP; téma pre Claude spustí
- * session, ktorá model opraví.
+ * BCF topics over the federation models (D-099) - MCP only; a topic for Claude starts a
+ * session that fixes the model.
  */
 const BCF_RULES = `
 - Chyba alebo nezhoda v MODELI (prvok, vlastnosť, kolízia, pripomienka k prvku, požiadavka na úpravu
@@ -284,7 +284,7 @@ const BCF_RULES = `
   bcf_topic(action=update); uzavretie bez úpravy modelu = bcf_topic(action=close).`;
 
 /**
- * Smerovanie medzi DB tools a IFC motorom (D-084) - len keď je motor zapnutý.
+ * Routing between DB tools and the IFC engine (D-084) - only when the engine is on.
  */
 const ENGINE_RULES = `
 

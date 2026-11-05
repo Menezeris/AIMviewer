@@ -1,10 +1,10 @@
 import { PANEL_SECTIONS, type SelectPanel } from "../viewer-ops";
 
 /**
- * Vstup `select_in_3d` pre panel vlastností (D-113) -> `SelectPanel` op `select`.
- * Bez panela `undefined`; chybný vstup je chyba toolu (model ju vidí a opraví),
- * nie ticho zahodený panel. Panel má od D-127 len IFC obsah: `panel_tab` sa už
- * neponúka a starý vstup sa ignoruje; výmera (Qto) sa zvýrazní v sekcii Quantities.
+ * Input of `select_in_3d` for the properties panel (D-113) -> `SelectPanel` op `select`.
+ * Without a panel `undefined`; bad input is a tool error (the model sees it and fixes it),
+ * not a silently dropped panel. Since D-127 the panel has only IFC content: `panel_tab` is no
+ * longer offered and the old input is ignored; a quantity (Qto) is highlighted in the Quantities section.
  */
 export function selectPanelInput(input: Record<string, unknown>): SelectPanel | undefined {
   const panel: SelectPanel = {};
@@ -22,28 +22,28 @@ export function selectPanelInput(input: Record<string, unknown>): SelectPanel | 
       throw new Error("highlight: 'Pset.Vlastnosť', napr. Pset_WallCommon.FireRating.");
     }
     panel.focus = { pset, property };
-    // Sekciu podľa sady určí viewer (Qto -> Quantities); explicitnú sekciu focus prebije.
+    // The section by set is determined by the viewer (Qto -> Quantities); an explicit section overrides the focus.
     delete panel.section;
   }
   return panel.section || panel.focus ? panel : undefined;
 }
 
 export interface PropertyLookup {
-  /** Vlastnosť je v dátach AIM prvku (aj zdedená z typu). */
+  /** The property is in the AIM element data (also inherited from the type). */
   in_aim: boolean;
-  /** Presné mená, ak sa líšia veľkosťou písmen od zadaných. */
+  /** Exact names, if they differ in letter case from the given ones. */
   pset?: string;
   property?: string;
   value?: unknown;
-  /** Psety prvku, keď sa vlastnosť nenašla (na opravu mena). */
+  /** Psets of the element when the property was not found (for fixing the name). */
   psets?: string[];
 }
 
 const PSET_LIST_MAX = 30;
 
 /**
- * Je `pset.property` v properties prvku (D-127)? Zhoda bez ohľadu na veľkosť písmen,
- * presná má prednosť. Rezervované `_kľúče` nie sú psety.
+ * Is `pset.property` in the properties of the element (D-127)? Case-insensitive match,
+ * the exact one takes precedence. Reserved `_keys` are not psets.
  */
 export function lookupProperty(properties: unknown, pset: string, property: string): PropertyLookup {
   const props = properties && typeof properties === "object" && !Array.isArray(properties) ? (properties as Record<string, unknown>) : {};

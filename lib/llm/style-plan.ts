@@ -1,25 +1,25 @@
 /**
- * Čistá logika rozšíreného `style_in_3d` (D-096): skupiny s vlastnou farbou,
- * AND kritériá a stavba viewer ops. Dohľadanie členov systému, zóny a podlažia
- * v DB robí `style-scope.ts`; tu sa nič nečíta ani nezapisuje.
+ * Pure logic of the extended `style_in_3d` (D-096): groups with their own color,
+ * AND criteria and building viewer ops. Looking up the members of a system, zone and storey
+ * in the DB is done by `style-scope.ts`; nothing is read or written here.
  */
 
 export class StyleInputError extends Error {}
 
-/** Max skupín v jednom volaní. */
+/** Max groups in one call. */
 export const MAX_STYLE_GROUPS = 12;
 /**
- * Max GUIDov spolu za všetky skupiny jedného volania: ~23 znakov na GUID v URL,
- * akcia klienta smie mať najviac 16 000 znakov (`isSafeViewerUrl`), rezerva na
- * ďalšie akcie toho istého kola.
+ * Max GUIDs in total across all groups of one call: ~23 characters per GUID in the URL,
+ * a client action may have at most 16 000 characters (`isSafeViewerUrl`), a reserve for
+ * other actions of the same round.
  */
 export const SCOPED_GUID_CAP = 500;
 
 const HEX6 = /^[0-9a-f]{6}$/;
-/** Akcie, pri ktorých má skupina farbu (Lens, D-096); pri izolácii a X-ray je farba voliteľná. */
+/** Actions where a group has a color (Lens, D-096); with isolation and X-ray the color is optional. */
 const COLOR_ACTIONS = new Set(["colorize", "transparent", "isolate", "xray"]);
 
-/** Kľúče filtra, ktoré smie niesť top-level vstup aj skupina. */
+/** Filter keys that the top-level input and a group may carry. */
 export const FILTER_KEYS = [
   "ids_or_refs",
   "global_ids",
@@ -41,7 +41,7 @@ export const FILTER_KEYS = [
   "page",
 ] as const;
 
-/** Kritériá, ktoré vyžadujú rozbalenie členov v DB (D-096, dokument D-104). */
+/** Criteria that require expanding members in the DB (D-096, document D-104). */
 const SCOPE_KEYS = ["system", "system_type", "not_in_system", "zone", "storey", "document"] as const;
 
 export type StyleFilter = Partial<Record<(typeof FILTER_KEYS)[number], unknown>>;
@@ -50,11 +50,11 @@ export interface StyleGroup {
   label: string;
   color: string;
   filter: StyleFilter;
-  /** Priehľadnosť farby 0.05-1 (D-139); bez hodnoty rozhodne host podľa druhu prvkov. */
+  /** Color transparency 0.05-1 (D-139); without a value the host decides by the kind of elements. */
   opacity?: number;
 }
 
-/** `opacity` toolu (D-139): 0.05-1, bez hodnoty `undefined`. */
+/** `opacity` of the tool (D-139): 0.05-1, without a value `undefined`. */
 export function parseOpacity(raw: unknown, where: string): number | undefined {
   if (raw === undefined || raw === null || raw === "") return undefined;
   const n = typeof raw === "number" ? raw : Number(raw);
@@ -66,7 +66,7 @@ const present = (v: unknown): boolean =>
   v !== undefined && v !== null && v !== false && !(typeof v === "string" && v.trim() === "") &&
   !(Array.isArray(v) && v.length === 0);
 
-/** Ide o rozšírený režim (systém, zóna, podlažie, dokument alebo skupiny)? */
+/** Is it the extended mode (system, zone, storey, document or groups)? */
 export function needsScopedStyle(input: Record<string, unknown>): boolean {
   return Array.isArray(input.groups) || SCOPE_KEYS.some((k) => present(input[k]));
 }
@@ -74,12 +74,12 @@ export function needsScopedStyle(input: Record<string, unknown>): boolean {
 export function pickFilter(src: Record<string, unknown>): StyleFilter {
   const out: StyleFilter = {};
   for (const k of FILTER_KEYS) if (present(src[k])) out[k] = src[k];
-  // Model píše `floor` (ako set_section, set_view_mode); filter podlažia sa volá `storey` (#219).
+  // The model writes `floor` (like set_section, set_view_mode); the storey filter is called `storey` (#219).
   if (out.storey === undefined && present(src.floor)) out.storey = src.floor;
   return out;
 }
 
-/** Kľúče skupiny, ktoré nie sú filter ani label/color: pickFilter ich zahodí, preto ich treba nahlásiť (#219). */
+/** Group keys that are neither a filter nor label/color: pickFilter drops them, so they must be reported (#219). */
 export function ignoredGroupKeys(input: Record<string, unknown>): string[] {
   if (!Array.isArray(input.groups)) return [];
   const known = new Set<string>([...FILTER_KEYS, "label", "color", "floor"]);
@@ -92,7 +92,7 @@ export function ignoredGroupKeys(input: Record<string, unknown>): string[] {
   return [...out];
 }
 
-/** `page` filtra (D-104 krok 4): kladné celé číslo (aj ako text); bez dokumentu nedáva zmysel. */
+/** `page` of the filter (D-104 step 4): a positive integer (also as text); meaningless without a document. */
 export function documentPage(f: StyleFilter): number | undefined {
   if (f.page === undefined || f.page === null || f.page === "") return undefined;
   const page = Number(f.page);
@@ -105,7 +105,7 @@ function normColor(raw: unknown): string {
   return String(raw ?? "").trim().replace(/^#/, "").toLowerCase();
 }
 
-/** Krátky popis filtra pre štítok skupiny. */
+/** Short description of the filter for the group label. */
 export function describeFilter(f: StyleFilter): string {
   const parts: string[] = [];
   const types = Array.isArray(f.ifc_types) ? (f.ifc_types as unknown[]).map(String) : [];
@@ -126,16 +126,16 @@ export function describeFilter(f: StyleFilter): string {
 }
 
 /**
- * Vstup toolu -> skupiny. Bez `groups` je to jedna skupina z top-level filtra.
- * S `groups` platí top-level filter pre všetky skupiny (AND) a skupina ho
- * spresní alebo prepíše vlastnými kľúčmi.
+ * Tool input -> groups. Without `groups` it is one group from the top-level filter.
+ * With `groups` the top-level filter applies to all groups (AND) and a group
+ * refines or overrides it with its own keys.
  */
 export function parseStyleGroups(input: Record<string, unknown>, action: string): StyleGroup[] {
   const base = pickFilter(input);
   const colorOf = (raw: unknown, where: string): string => {
     if (!COLOR_ACTIONS.has(action)) return "";
     const c = normColor(raw);
-    // Izolované prvky ostanú v pôvodnom vzhľade, kým farbu niekto nežiada (Samuel, 2026-10-19).
+    // Isolated elements keep their original look until someone asks for a color (Samuel, 2026-10-19).
     if (!c && (action === "isolate" || action === "xray")) return "";
     if (!HEX6.test(c)) throw new StyleInputError(`${where} musí byť hex RRGGBB (napr. ef4444 pre červenú).`);
     return c;
@@ -166,7 +166,7 @@ export function parseStyleGroups(input: Record<string, unknown>, action: string)
   });
 }
 
-/** Prienik množín (AND); `null` = kritérium nezadané. Všetky null -> null. */
+/** Intersection of sets (AND); `null` = criterion not given. All null -> null. */
 export function intersectSets(sets: (Set<string> | null)[]): Set<string> | null {
   const given = sets.filter((s): s is Set<string> => s !== null);
   if (given.length === 0) return null;
@@ -179,14 +179,14 @@ export interface NamedRow {
   id: string;
   object_ref: string | null;
   name: string | null;
-  /** IFC ObjectType, napr. "Přiváděný vzduch" pri systéme (voliteľné). */
+  /** IFC ObjectType, e.g. "Přiváděný vzduch" (supply air) for a system (optional). */
   user_defined_type?: string | null;
 }
 
 /**
- * Výber uzlov podľa id, object_ref, názvu alebo ObjectType: najprv presná zhoda
- * (bez ohľadu na veľkosť písmen), inak všetky, ktoré text obsahujú ("Prívod" =
- * Prívod-1NP, Prívod-2NP, ...; "Přiváděný vzduch" = všetky systémy s týmto ObjectType).
+ * Selection of nodes by id, object_ref, name or ObjectType: first an exact match
+ * (case-insensitive), otherwise all that contain the text ("Prívod" (supply) =
+ * Prívod-1NP, Prívod-2NP, ...; "Přiváděný vzduch" = all systems with this ObjectType).
  */
 export function pickNamed<T extends NamedRow>(rows: T[], want: string): T[] {
   const w = want.trim().toLowerCase();
@@ -205,7 +205,7 @@ export interface CandidateRow {
   predefined_type: string | null;
 }
 
-/** Atribútové filtre nad kandidátom (ifc_type(s)/domain, predefined_type, query). */
+/** Attribute filters over a candidate (ifc_type(s)/domain, predefined_type, query). */
 export function matchesAttributes(row: CandidateRow, f: { types: string[]; predefinedType: string; query: string }): boolean {
   if (f.types.length > 0 && !f.types.some((t) => t.toLowerCase() === (row.ifc_type ?? "").toLowerCase())) return false;
   if (f.predefinedType && f.predefinedType.toLowerCase() !== (row.predefined_type ?? "").toLowerCase()) return false;
@@ -218,9 +218,9 @@ export function matchesAttributes(row: CandidateRow, f: { types: string[]; prede
 }
 
 /**
- * Hodnota vlastnosti psetu (efektívne properties s dedičnosťou z typu): presná
- * zhoda textu bez ohľadu na veľkosť písmen, kľúč vlastnosti tiež bez ohľadu na
- * veľkosť; `pset` zúži hľadanie na jeden pset.
+ * Value of a pset property (effective properties with inheritance from the type): exact
+ * case-insensitive text match, the property key also case-insensitive;
+ * `pset` narrows the search to one pset.
  */
 export function matchesProperty(
   properties: unknown,
@@ -243,8 +243,8 @@ export function matchesProperty(
 }
 
 /**
- * Rozdelí strop GUIDov medzi skupiny: každá dostane aspoň rovnaký diel, nevyužitý
- * diel menších skupín pripadne väčším. Vráti, koľko GUIDov z každej skupiny ide do ops.
+ * Splits the GUID cap among groups: each gets at least an equal share, the unused
+ * share of smaller groups goes to larger ones. Returns how many GUIDs of each group go into ops.
  */
 export function allocateCap(sizes: number[], cap = SCOPED_GUID_CAP): number[] {
   const out = sizes.map(() => 0);
@@ -263,7 +263,7 @@ export function allocateCap(sizes: number[], cap = SCOPED_GUID_CAP): number[] {
   return out;
 }
 
-/** Op viewera v D-066 wire formáte `<op>:<arg>:<guid.guid…>`. */
+/** Viewer op in the D-066 wire format `<op>:<arg>:<guid.guid...>`. */
 export function styleOp(action: string, color: string, guids: string[]): string {
   return `${action}:${action === "colorize" ? color : ""}:${guids.join(".")}`;
 }

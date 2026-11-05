@@ -45,30 +45,30 @@ import {
 } from "./query-view";
 
 /**
- * Read-only tools LLM rozhrania (D-056) — tool-calling nad whitelistom, NIE
- * text-to-SQL. Guardraily D-005: každý tool dotazuje len whitelistované
- * views/tabuľky, má tvrdý row-cap a nikdy nezapisuje. Vzťahy idú výhradne cez
- * kanonické `rel_*` views (D-051), nikdy cez base `relationships`.
+ * Read-only tools of the LLM interface (D-056) - tool-calling over a whitelist, NOT
+ * text-to-SQL. Guardrails D-005: every tool queries only whitelisted
+ * views/tables, has a hard row cap and never writes. Relations go exclusively through the
+ * canonical `rel_*` views (D-051), never through the base `relationships`.
  *
- * Trust loop: runtime pri každom tool výsledku zbiera „zdroje" (objekty, ktoré
- * sa v odpovedi vyskytli) a po skončení slučky ich obohatí o aktívny IFC GUID
- * (deep-link do 3D) a E4 výkresy (deep-link do výkresu) — dohľadateľnosť
- * nezávisí od formátovania modelu.
+ * Trust loop: on every tool result the runtime collects "sources" (objects that
+ * appeared in the answer) and after the loop ends enriches them with the active IFC GUID
+ * (deep link into 3D) and E4 drawings (deep link into the drawing) - traceability
+ * does not depend on the model's formatting.
  */
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
-/** Koľko prvkov naraz zvládne show_in_3d (embed viewer unesie aj stovky GUIDov). */
+/** How many elements show_in_3d handles at once (the embed viewer copes with hundreds of GUIDs). */
 const SHOW_3D_CAP = 100;
-/** Max dĺžka JSON payloadu tool výsledku (ochrana kontextu). */
+/** Max length of the JSON payload of a tool result (context protection). */
 const MAX_RESULT_CHARS = 12_000;
 
-/** Stĺpce search_objects, ktoré môže určiť filter (eval D-126, N2). */
+/** Columns of search_objects that a filter can determine (eval D-126, N2). */
 const FILTER_COLUMNS = ["object_type", "ifc_type", "predefined_type"] as const;
 
 /**
- * Stĺpec, ktorý určuje filter a má na strane jednu hodnotu, sa z riadkov vynechá a uvedie raz
- * v `same`. Riadok vyústky je tak o štvrtinu kratší a do výsledku sa zmestí viac riadkov.
+ * A column determined by the filter that has a single value on the page is left out of the rows and stated once
+ * in `same`. A terminal row is then a quarter shorter and more rows fit into the result.
  */
 export function hoistFilterColumns<T extends object>(
   rows: T[],
@@ -88,20 +88,20 @@ export function hoistFilterColumns<T extends object>(
     rows: rows.map((r) => Object.fromEntries(Object.entries(r).filter(([k]) => !keys.includes(k))) as Partial<T>),
   };
 }
-/** Koľko prvkov naraz zvládne lokalizácia (search_objects mode=locate). Po D-183 K3 majú podlažie aj prvky VZT
- *  (526 IfcDuctSegment), pri strope 500 vychádzal rozpad po podlažiach z náhodnej vzorky (2NP 239 namiesto 249). */
+/** How many elements localization handles at once (search_objects mode=locate). After D-183 K3 HVAC elements have a storey too
+ * (526 IfcDuctSegment); with a cap of 500 the breakdown by storey came from a random sample (2NP 239 instead of 249). */
 const LOCATE_CAP = 3000;
-/** Strana načítania prvkov pre locate (PostgREST max_rows = 1000). */
+/** Page size for loading elements for locate (PostgREST max_rows = 1000). */
 const LOCATE_PAGE = 1000;
-/** Veľkosť dávky pre `.in()` filtre (limit dĺžky URL v PostgREST). */
+/** Batch size for `.in()` filters (URL length limit in PostgREST). */
 const IN_CHUNK = 100;
-/** Max prvkov jednej style_in_3d operácie — GUIDy cestujú v URL (D-066). */
+/** Max elements of one style_in_3d operation - GUIDs travel in the URL (D-066). */
 const STYLE_CAP = 400;
 
-/** Max IFC GlobalId priamo z výsledku IFC motora (D-084): ~23 znakov na GUID v URL (limit 16 000). */
+/** Max IFC GlobalIds directly from an IFC engine result (D-084): ~23 characters per GUID in the URL (limit 16 000). */
 const GLOBAL_IDS_CAP = 600;
 const IFC_GUID_RE = /^[0-9A-Za-z_$]{22}$/;
-/** IFC GlobalId z `global_ids` (výsledok `ifc_*` toolov) - len platný tvar, bez duplicít. */
+/** IFC GlobalIds from `global_ids` (result of `ifc_*` tools) - only a valid shape, without duplicates. */
 function sanitizeGlobalIds(raw: unknown): string[] {
   if (!Array.isArray(raw)) return [];
   const ids = raw
@@ -111,7 +111,7 @@ function sanitizeGlobalIds(raw: unknown): string[] {
   return [...new Set(ids)].slice(0, GLOBAL_IDS_CAP);
 }
 
-/** Je v show_in_3d zadaný filter nad objects (ifc_type, predefined_type, query, object_type)? */
+/** Is a filter over objects (ifc_type, predefined_type, query, object_type) given in show_in_3d? */
 function hasObjectFilter(input: Record<string, unknown>): boolean {
   return Boolean(
     sanitizeQuery(input.query) ||
@@ -122,8 +122,8 @@ function hasObjectFilter(input: Record<string, unknown>): boolean {
 }
 
 /**
- * Whitelist relácií pre generický query_view (celá čitateľná DB, D-056 dodatok).
- * Base `relationships` zámerne chýba — LLM dotazuje len kanonické views (D-051).
+ * Whitelist of relations for the generic query_view (the whole readable DB, D-056 addendum).
+ * The base `relationships` is deliberately missing - the LLM queries only canonical views (D-051).
  */
 const QUERY_RELATIONS = new Set([
   "objects",
@@ -163,13 +163,13 @@ const QUERY_RELATIONS = new Set([
   "v_object_documents",
 ]);
 
-/** Povolené operátory filtra query_view (PostgREST). */
+/** Allowed query_view filter operators (PostgREST). */
 const QUERY_OPS = new Set(["eq", "neq", "gt", "gte", "lt", "lte", "like", "ilike", "is", "in"]);
 
-/** Stĺpec alebo JSONB cesta (properties->Pset_X->>Kľúč) — nič iné neprejde. */
+/** Column or JSONB path (properties->Pset_X->>Key) - nothing else passes. */
 const COLUMN_RE = /^[a-zA-Z_][a-zA-Z0-9_]*(->>?[a-zA-Z0-9_ .-]+)*$/;
 
-/** Whitelist kanonických views vzťahov (D-051) — jediné povolené `rel_type`. */
+/** Whitelist of canonical relation views (D-051) - the only allowed `rel_type`. */
 const REL_VIEWS = new Set([
   "rel_aggregates",
   "rel_contained_in_spatial_structure",
@@ -185,29 +185,29 @@ const REL_VIEWS = new Set([
   "rel_external_reference_relationship",
 ]);
 
-/** Zdroj pre trust loop — deep-linky renderuje UI, nie model. */
+/** Source for the trust loop - deep links are rendered by the UI, not the model. */
 export interface AskSource {
   id: string;
   objectType: string;
   objectRef: string | null;
   name: string | null;
-  /** Segment detail route: `asset_type` → type, document → drawing, inak node. */
+  /** Segment detail route: `asset_type` -> type, document -> drawing, otherwise node. */
   route: "node" | "type" | "drawing";
-  /** Aktívny IFC GUID (deep-link `/ifc?focus=<guid>`); null = nie je v 3D. */
+  /** Active IFC GUID (deep link `/ifc?focus=<guid>`); null = not in 3D. */
   ifcGuid: string | null;
-  /** Výkresy, kde je prvok zobrazený (deep-link `/drawing/[docId]?focus=<id>`). */
+  /** Drawings where the element is shown (deep link `/drawing/[docId]?focus=<id>`). */
   drawings: { docId: string; docName: string | null; page: number | null }[];
 }
 
-/** UI akcia vyžiadaná modelom (show_in_3d…) — klient na ňu naviguje (D-056). */
+/** UI action requested by the model (show_in_3d...) - the client navigates to it (D-056). */
 export type { AskAction };
 
-/** Záznam o vykonanom tool calle (transparentnosť v UI). */
+/** Record of an executed tool call (transparency in the UI). */
 export interface AskToolTrace {
   name: string;
   input: Record<string, unknown>;
   ok: boolean;
-  /** Krátky súhrn výsledku (počet riadkov / chyba). */
+  /** Short summary of the result (row count / error). */
   summary: string;
 }
 
@@ -231,7 +231,7 @@ function clampLimit(raw: unknown): number {
   return Math.min(Math.max(n, 1), MAX_LIMIT);
 }
 
-/** Sanitizácia textu do PostgREST `or=`/`ilike` filtra (čiarky/zátvorky = syntax). */
+/** Sanitization of text into a PostgREST `or=`/`ilike` filter (commas/parentheses = syntax). */
 function sanitizeQuery(raw: unknown): string {
   return String(raw ?? "").replace(/[,()%]/g, " ").trim().slice(0, 100);
 }
@@ -240,13 +240,13 @@ function isUuid(v: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 }
 
-/** Kód dokumentu z jeho názvu ("D.1.3.04 Pôdorys 3NP PBR"); object_ref je "OCB_SO01_PBR_D-1-3-04_...". */
+/** Document code from its name ("D.1.3.04 Pôdorys 3NP PBR" = floor plan 3NP fire protection); object_ref is "OCB_SO01_PBR_D-1-3-04_...". */
 const DOCUMENT_CODE_RE = /^[A-Z](\.\d+){2,}$/i;
 
-/** Čo `get_object` pridá v tom istom volaní (D-115). */
+/** What `get_object` adds in the same call (D-115). */
 export const GET_OBJECT_INCLUDES = ["details", "path", "documents", "quantities"] as const;
 
-/** Staré hodnoty `include` (D-104: výkresy E4 nahradili dokumenty z modelu); nevypisujú sa. */
+/** Old values of `include` (D-104: E4 drawings replaced documents from the model); they are not listed. */
 const LEGACY_GET_OBJECT_INCLUDES: Record<string, (typeof GET_OBJECT_INCLUDES)[number]> = {
   drawings: "documents",
 };
@@ -961,8 +961,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 ];
 
 /**
- * D-169: strana prečítaná OCR (nemala textovú vrstvu) - zdroj, istota a upozornenie pre model.
- * Pri textovej vrstve nič, aby sa bežný výsledok nemenil.
+ * D-169: page read by OCR (it had no text layer) - source, confidence and a warning for the model.
+ * With a text layer nothing, so that the usual result does not change.
  */
 function ocrInfo(blocks: TextBlock[]) {
   const src = pageSource(blocks);
@@ -981,8 +981,8 @@ export interface ToolExecution {
   isError: boolean;
 }
 
-/** Runtime jednej /api/ask požiadavky: vykonáva tools + zbiera zdroje a trace. */
-/** Strop prvkov jedného viacnásobného výberu (#217): GUIDy idú v URL `ops`. */
+/** Runtime of one /api/ask request: executes tools + collects sources and trace. */
+/** Cap of elements of one multi-selection (#217): GUIDs travel in the URL `ops`. */
 const MAX_SELECT_REFS = 200;
 
 export class AskToolRuntime {
@@ -994,12 +994,12 @@ export class AskToolRuntime {
 
   private sources = new Map<string, AskSource>();
   readonly trace: AskToolTrace[] = [];
-  /** UI akcie vyžiadané modelom — route ich vráti klientovi na vykonanie. */
+  /** UI actions requested by the model - the route returns them to the client for execution. */
   readonly actions: AskAction[] = [];
-  /** Verzia AIM chat lens z posledného `style_in_3d` (D-096) - MCP sa podľa nej spýta viewera na počty. */
+  /** Version of the AIM chat lens from the last `style_in_3d` (D-096) - MCP asks the viewer for counts according to it. */
   lensRev: string | null = null;
 
-  /** Zaregistruje objekt medzi zdroje (dedupe podľa id). */
+  /** Registers an object among the sources (dedupe by id). */
   private addSource(row: ObjectRow) {
     if (this.sources.has(row.id)) return;
     this.sources.set(row.id, {
@@ -1058,7 +1058,7 @@ export class AskToolRuntime {
       case "get_model_stats":
         return this.getModelStats();
       case "search_objects":
-        // D-115: počet a lokalizácia sú režimy toho istého hľadania.
+        // D-115: count and localization are modes of the same search.
         if (input.mode === "count") return this.countObjects(input);
         if (input.mode === "locate") return this.locateObjects(input);
         if (input.mode !== undefined && input.mode !== "list") throw new Error("mode: list | count | locate.");
@@ -1077,7 +1077,7 @@ export class AskToolRuntime {
         return this.searchDocuments(input);
       case "show_in_3d":
         if (input.select === true) {
-          // D-115: výber ako klik je režim show_in_3d; viac prvkov z ids_or_refs je viacnásobný výber (#217).
+          // D-115: selection as a click is a mode of show_in_3d; several elements from ids_or_refs are a multi-selection (#217).
           return this.selectIn3d(input);
         }
         return this.showIn3d(input);
@@ -1094,21 +1094,21 @@ export class AskToolRuntime {
     }
   }
 
-  /** Spoločné filtre search_objects/count_objects nad `objects`. */
+  /** Common filters of search_objects/count_objects over `objects`. */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private applyObjectFilters<T extends { or: any; ilike: any; eq: any; is: any }>(
     q: T,
     input: Record<string, unknown>
   ): T {
-    // Zaniknuté objekty (už ich nevydáva žiadny model, D-088) AI nevidí.
+    // Objects that no longer exist (no model issues them any more, D-088) are not visible to the AI.
     q = q.is("valid_until", null);
     const query = sanitizeQuery(input.query);
     // D-189: nodes of the project plus the global ones (persons, organizations, A1). One `or`
     // filter carries both the project scope and the text search.
     const scope = [`project_id.eq.${this.projectId}`, "project_id.is.null"];
     if (query) {
-      // Hľadáme naprieč identitou aj IFC typológiou — podtyp (AIRCONDITIONINGUNIT)
-      // žije v predefined_type, nie v názve (poučenie z prevádzky, D-056).
+      // We search across identity and IFC typology - the subtype (AIRCONDITIONINGUNIT)
+      // lives in predefined_type, not in the name (lesson from operation, D-056).
       const text =
         `name.ilike.%${query}%,object_ref.ilike.%${query}%,` +
         `ifc_type.ilike.%${query}%,predefined_type.ilike.%${query}%`;
@@ -1118,7 +1118,7 @@ export class AskToolRuntime {
     }
     if (typeof input.object_type === "string" && input.object_type)
       q = q.eq("object_type", input.object_type);
-    // ilike bez % = case-insensitive presná zhoda (model píše ifcdoor/IFCDOOR…).
+    // ilike without % = case-insensitive exact match (the model writes ifcdoor/IFCDOOR...).
     const ifcType = sanitizeQuery(input.ifc_type);
     if (ifcType) q = q.ilike("ifc_type", ifcType);
     const predefinedType = sanitizeQuery(input.predefined_type);
@@ -1151,7 +1151,7 @@ export class AskToolRuntime {
           "napr. 'lobby' miestnosti 1.01), slovník tried dá get_model_stats.",
       };
     }
-    // Eval D-126 (N2): list s limit=100 pri 139 vyústkach vrátil 100 riadkov bez znamenia, že chýba zvyšok.
+    // Eval D-126 (N2): list with limit=100 on 139 terminals returned 100 rows without a sign that the rest is missing.
     const page = pageInfo(count ?? offset + rows.length, offset, rows.length);
     const { same, rows: narrow } = hoistFilterColumns(rows, input);
     if (!page.truncated && offset === 0 && !same) return rows;
@@ -1164,11 +1164,11 @@ export class AskToolRuntime {
   }
 
   /**
-   * Fulltext + fuzzy nad `objects.search_text` (D-059) — RPC `search_everything`.
-   * Jediné .rpc() volanie LLM vrstvy: parametrizované (žiadny SQL splicing),
-   * row-cap drží SQL funkcia (limit 50).
+   * Fulltext + fuzzy over `objects.search_text` (D-059) - RPC `search_everything`.
+   * The only .rpc() call of the LLM layer: parameterized (no SQL splicing),
+   * the row cap is held by the SQL function (limit 50).
    */
-  /** Aj pre kombinované `search_all` (D-095), preto verejné. */
+  /** Also for the combined `search_all` (D-095), hence public. */
   async searchEverything(input: Record<string, unknown>) {
     const supabase = getSupabaseAdmin();
     const q = String(input.q ?? "").trim().slice(0, 200);
@@ -1217,9 +1217,9 @@ export class AskToolRuntime {
   }
 
   /**
-   * Batch lokalizácia: prvky podľa filtrov/ids → podlažie (+ miestnosť) na
-   * jeden call. Containment: prvok →(contained_in) space|floor; space
-   * →(aggregates) floor (MEP býva rovno na podlaží, D-049).
+   * Batch localization: elements by filters/ids -> storey (+ space) in
+   * one call. Containment: element ->(contained_in) space|floor; space
+   * ->(aggregates) floor (MEP is often directly on the storey, D-049).
    */
   private async locateObjects(input: Record<string, unknown>) {
     const supabase = getSupabaseAdmin();
@@ -1239,7 +1239,7 @@ export class AskToolRuntime {
         filters
       );
       if (countRes.error) throw new Error(countRes.error.message);
-      // Stránky so stabilným poradím: rozpad po podlažiach počíta všetky prvky do LOCATE_CAP, nie náhodnú vzorku.
+      // Pages with a stable order: the breakdown by storey counts all elements up to LOCATE_CAP, not a random sample.
       const want = Math.min(countRes.count ?? LOCATE_CAP, LOCATE_CAP);
       elements = [];
       for (let from = 0; from < want; from += LOCATE_PAGE) {
@@ -1260,7 +1260,7 @@ export class AskToolRuntime {
       return { total: 0, hint: "Nič sa nenašlo — over hodnoty filtrov cez get_model_stats." };
     }
 
-    // Rodičia (space alebo priamo floor) po dávkach.
+    // Parents (space or directly floor) in batches.
     const elementIds = elements.map((e) => e.id);
     const parentByElement = new Map<string, string>();
     for (let i = 0; i < elementIds.length; i += IN_CHUNK) {
@@ -1272,7 +1272,7 @@ export class AskToolRuntime {
         .is("valid_until", null);
       if (error) throw new Error(error.message);
       for (const r of (data ?? []) as { from_id: string; to_id: string | null }[]) {
-        if (r.to_id) parentByElement.set(r.from_id, r.to_id); // kontajner bez uzla AIM (D-183 K3)
+        if (r.to_id) parentByElement.set(r.from_id, r.to_id); // container without an AIM node (D-183 K3)
       }
     }
 
@@ -1288,7 +1288,7 @@ export class AskToolRuntime {
       for (const r of (data ?? []) as ObjectRow[]) parents.set(r.id, r);
     }
 
-    // space → floor (rel_aggregates, smer dieťa→rodič).
+    // space -> floor (rel_aggregates, direction child -> parent).
     const spaceIds = parentIds.filter((id) => parents.get(id)?.object_type === "space");
     const floorBySpace = new Map<string, string>();
     for (let i = 0; i < spaceIds.length; i += IN_CHUNK) {
@@ -1315,7 +1315,7 @@ export class AskToolRuntime {
       for (const r of (data ?? []) as ObjectRow[]) parents.set(r.id, r);
     }
 
-    // Zoskupenie po podlažiach; vzorka prvkov (+miestnosť) na podlažie.
+    // Grouping by storey; a sample of elements (+ space) per storey.
     const SAMPLE = 10;
     const groups = new Map<
       string,
@@ -1367,9 +1367,9 @@ export class AskToolRuntime {
   }
 
   /**
-   * Generický read-only dopyt nad whitelistom relácií (celá dátová vrstva).
-   * D-126: vždy stabilné poradie (kľúč relácie za `order`), `offset` a súhrn
-   * strany (total, truncated, next_offset); `related` zúži uzly na susedov uzla.
+   * Generic read-only query over the whitelist of relations (the whole data layer).
+   * D-126: always a stable order (the relation key after `order`), `offset` and a page
+   * summary (total, truncated, next_offset); `related` narrows nodes to the neighbors of a node.
    */
   private async queryView(input: Record<string, unknown>) {
     const supabase = getSupabaseAdmin();
@@ -1410,8 +1410,8 @@ export class AskToolRuntime {
         if (!COLUMN_RE.test(col)) throw new Error(`Neplatný stĺpec '${col}'.`);
         if (!QUERY_OPS.has(operator))
           throw new Error(`Neplatný operátor '${operator}' — povolené: ${[...QUERY_OPS].join(", ")}.`);
-        // PostgREST porovnáva JSONB cesty ako TEXT ('9' > '10') → číselné porovnanie
-        // psetov musí ísť cez aggregate_objects (guidance error, viditeľný v trace).
+        // PostgREST compares JSONB paths as TEXT ('9' > '10') -> a numeric comparison
+        // of psets must go through aggregate_objects (guidance error, visible in the trace).
         if (col.includes("->") && ["gt", "gte", "lt", "lte"].includes(operator)) {
           throw new Error(
             `Porovnanie '${operator}' nad JSONB cestou tu porovnáva text ('9' > '10'), nie ` +
@@ -1444,7 +1444,7 @@ export class AskToolRuntime {
         );
       }
       if (order?.column.includes("->")) throw new Error("order nad JSONB cestou s related nejde; zoraď podľa stĺpca.");
-      // Spojené dávky sa zoraďujú v TS, preto riadok nesie aj stĺpce poradia.
+      // Merged batches are sorted in TS, so the row also carries the order columns.
       const cols = selectCols.length > 0 ? [...new Set([...selectCols, ...terms.map((t) => t.column)])] : [];
       const all: Record<string, unknown>[] = [];
       for (let i = 0; i < ids.length; i += IN_CHUNK) {
@@ -1468,8 +1468,8 @@ export class AskToolRuntime {
         for (const t of terms) q = q.order(t.column, { ascending: t.ascending });
         q = q.range(offset, offset + limit - 1);
       }
-      // Pohľady IFC vzťahov z kópie revízie majú aj riadky so stranou bez uzla AIM (D-183 K3): počet členov
-      // systému alebo výskytov typu je in_aim, nie total.
+      // Views of IFC relations from the revision copy also have rows with a side without an AIM node (D-183 K3): the number of members
+      // of a system or occurrences of a type is in_aim, not total.
       const relSplit = REL_VIEWS.has(relation)
         ? this.relCounts(relation, {}, applyFilters, false).catch(() => null)
         : Promise.resolve(null);
@@ -1491,7 +1491,7 @@ export class AskToolRuntime {
       relSplitInfo = splitInfo;
     }
 
-    // Uzly do zdrojov (trust loop) — podľa tvaru riadku (objects/v_* views).
+    // Nodes into sources (trust loop) - by the shape of the row (objects/v_* views).
     for (const r of rows) {
       if (typeof r.id === "string" && (typeof r.object_type === "string" || relation === "v_asset_effective")) {
         this.addSource({
@@ -1511,7 +1511,7 @@ export class AskToolRuntime {
     };
   }
 
-  /** Susedia uzla cez kanonický view hrán (`related` v query_view, D-126). */
+  /** Neighbors of a node through the canonical edge view (`related` in query_view, D-126). */
   private async relatedIds(spec: RelatedSpec): Promise<string[]> {
     const supabase = getSupabaseAdmin();
     let nodeId = spec.node;
@@ -1540,9 +1540,9 @@ export class AskToolRuntime {
   }
 
   /**
-   * Agregácie/číselné filtre nad psetmi (D-060) — RPC `aggregate_objects`.
-   * Whitelisty a formátovanie identifikátorov/literálov drží SQL funkcia;
-   * TS strana len normalizuje vstup a zbiera zdroje z rows režimu.
+   * Aggregations/numeric filters over psets (D-060) - RPC `aggregate_objects`.
+   * Whitelists and formatting of identifiers/literals are held by the SQL function;
+   * the TS side only normalizes input and collects sources from the rows mode.
    */
   private async aggregateObjects(input: Record<string, unknown>) {
     const supabase = getSupabaseAdmin();
@@ -1594,15 +1594,15 @@ export class AskToolRuntime {
     return data;
   }
 
-  /** Slovník modelu — grounding pre filtre (model nemusí hádať hodnoty). */
+  /** Model dictionary - grounding for filters (the model does not have to guess values). */
   private async getModelStats() {
     const supabase = getSupabaseAdmin();
-    // Jadro (objects) je povinné; grounding bloky (psety, podlažia, systémy,
-    // klasifikácie, dokumenty — D-058) sú best-effort: ich výpadok nezhodí tool.
+    // The core (objects) is mandatory; grounding blocks (psets, storeys, systems,
+    // classifications, documents - D-058) are best-effort: their failure does not bring the tool down.
     const [objRows, psetRes, floorsRes, systemsRes, clsSysRes, docsRes] = await Promise.all([
-      // Stránkovane: .limit(10000) neprebije PostgREST db-max-rows (1000) —
-      // bez stránkovania by slovník modelu (grounding pre LLM) ticho podhodnotil
-      // počty typov/tried nad prvých 1000 objektov.
+      // Paged: .limit(10000) does not override the PostgREST db-max-rows (1000) -
+      // without paging the model dictionary (grounding for the LLM) would silently understate
+      // the counts of types/classes beyond the first 1000 objects.
       fetchAllPages<{
         object_type: string;
         ifc_type: string | null;
@@ -1644,7 +1644,7 @@ export class AskToolRuntime {
       }
     }
 
-    // Psety: názov → počet properties (presné cesty žijú vo v_property_dictionary).
+    // Psets: name -> number of properties (exact paths live in v_property_dictionary).
     const psetProps = new Map<string, Set<string>>();
     for (const r of (psetRes.error ? [] : (psetRes.data ?? [])) as {
       pset: string;
@@ -1662,7 +1662,7 @@ export class AskToolRuntime {
 
     return {
       object_types: Object.fromEntries(byObjectType),
-      // Len occurrence triedy (asset) — typy by duplikovali slovník.
+      // Only the occurrence class (asset) - types would duplicate the dictionary.
       asset_classes: [...byClass.entries()]
         .filter(([k]) => k.startsWith("asset|"))
         .map(([, v]) => v)
@@ -1682,7 +1682,7 @@ export class AskToolRuntime {
     };
   }
 
-  /** `get_object` s include (D-115): detail + vlastnosti, umiestnenie a výkresy v jednom volaní. */
+  /** `get_object` with include (D-115): detail + properties, placement and drawings in one call. */
   private async getObjectWith(input: Record<string, unknown>) {
     const include = Array.isArray(input.include)
       ? [...new Set(input.include.map((i) => LEGACY_GET_OBJECT_INCLUDES[String(i)] ?? String(i)))]
@@ -1693,7 +1693,7 @@ export class AskToolRuntime {
     if (include.length === 0) return base;
     const id = typeof base.id === "string" ? base.id : null;
     if (!id && include.includes("quantities")) {
-      // Prvok len v IFC súbore (D-102): výmery z motora podľa global_id, ostatné include nemajú v grafe čo čítať.
+      // Element only in the IFC file (D-102): quantities from the engine by global_id; the other includes have nothing to read in the graph.
       return { ...base, ifc: await this.ifcElementData(base) };
     }
     if (!id) {
@@ -1719,7 +1719,7 @@ export class AskToolRuntime {
     return { ...base, ...extra };
   }
 
-  /** Qto výmery a psety jedného prvku z IFC motora (D-142); chyba motora sa vráti ako pole `error`. */
+  /** Qto quantities and psets of one element from the IFC engine (D-142); an engine error is returned as the `error` field. */
   private async ifcElementData(base: Record<string, unknown>): Promise<Record<string, unknown>> {
     if (!engineEnabled()) return { error: "IFC motor je vypnutý, výmery zo súboru nie sú dostupné." };
     const target = [base.ifc_guid, base.global_id].find((g): g is string => typeof g === "string" && g.length > 0);
@@ -1750,7 +1750,7 @@ export class AskToolRuntime {
     let row = data?.[0] as (ObjectRow & { user_defined_type?: string | null }) | undefined;
     let matchedBy: "name" | "document_code" | undefined;
     if (!row && col === "object_ref") {
-      // Kód prvku býva meno, nie object_ref (VV.03.01.040), alebo prvok nie je v AIM vôbec (D-102).
+      // The element code is often a name, not an object_ref (VV.03.01.040), or the element is not in AIM at all (D-102).
       const { data: named, error: nameErr } = await supabase
         .from("objects")
         .select("id, object_type, object_ref, name, ifc_type, predefined_type, user_defined_type")
@@ -1784,7 +1784,7 @@ export class AskToolRuntime {
     return { ...row, ifc_guid: guidRows?.[0]?.ifc_guid ?? null, ...(floor ? { floor } : {}), ...(matchedBy ? { matched_by: matchedBy } : {}) };
   }
 
-  /** Podlažie uzla: priame umiestnenie, alebo cez miestnosť (contained -> aggregates), 1-2 dotazy. */
+  /** Storey of a node: direct placement, or via a space (contained -> aggregates), 1-2 queries. */
   private async floorOf(id: string): Promise<{ id: string; object_ref: string | null; name: string | null } | null> {
     const supabase = getSupabaseAdmin();
     let current = id;
@@ -1805,7 +1805,7 @@ export class AskToolRuntime {
     return null;
   }
 
-  /** Prvok len v IFC súbore podľa presného mena / Tagu (motor, D-102); null = nič alebo motor vypnutý. */
+  /** Element only in the IFC file by exact name / Tag (engine, D-102); null = nothing or engine off. */
   private async findInIfc(code: string): Promise<Record<string, unknown> | null> {
     if (!engineEnabled()) return null;
     const { findByNames } = await import("@/lib/engine/names");
@@ -1892,8 +1892,8 @@ export class AskToolRuntime {
     if (fromId && !isUuid(fromId)) throw new Error("from_id musí byť UUID.");
     if (toId && !isUuid(toId)) throw new Error("to_id musí byť UUID.");
 
-    // Strany s uzlom AIM najprv: riadky zo súboru bez uzla (napr. porty VZT v systéme, D-183 K3) by inak
-    // pod limitom vytlačili členov z grafu.
+    // Pages with an AIM node first: rows from the file without a node (e.g. HVAC ports in a system, D-183 K3) would otherwise
+    // push members from the graph out under the limit.
     // rel_member_of is between global nodes and has no project (D-189).
     let q = scopeQuery(supabase.from(relType).select("*"), relType, this.projectId)
       .is("valid_until", null)
@@ -1918,7 +1918,7 @@ export class AskToolRuntime {
       document_key?: string | null;
       classification_key?: string | null;
     }[];
-    // Klasifikačné to_id mieri do classification_references, nie objects.
+    // The classification to_id points into classification_references, not objects.
     const isClassification = relType === "rel_associates_classification";
     const objIds = rows
       .flatMap((r) => (isClassification ? [r.from_id] : [r.from_id, r.to_id]))
@@ -1941,7 +1941,7 @@ export class AskToolRuntime {
       );
     }
 
-    // Strana bez uzla AIM (pohľady IFC vzťahov z kópie revízie, D-183 K3) = GlobalId alebo kľúč zo súboru.
+    // A side without an AIM node (IFC relation views from the revision copy, D-183 K3) = GlobalId or a key from the file.
     const end = (id: string | null, globalId: string | null | undefined) =>
       id ? metaById.get(id) ?? { id } : { id: null, global_id: globalId ?? null, in_aim: false };
     const relatingKey = (r: (typeof rows)[number]) =>
@@ -1970,9 +1970,9 @@ export class AskToolRuntime {
   }
 
   /**
-   * Počty riadkov pohľadu IFC vzťahu pre filter (D-183 K3): total = všetky dvojice zo súboru aj AIM vrstvy,
-   * in_aim = obe strany majú uzol AIM, only_in_file = strana bez uzla (porty VZT v systéme, typ bez uzla...).
-   * Bez nich model rátal členov systému z riadkov a porty ich nafúkli (rel-system-members 44 -> 130).
+   * Row counts of an IFC relation view for a filter (D-183 K3): total = all pairs from the file and the AIM layer,
+   * in_aim = both sides have an AIM node, only_in_file = a side without a node (HVAC ports in a system, a type without a node...).
+   * Without them the model counted system members from the rows and ports inflated them (rel-system-members 44 -> 130).
    */
   private async relCounts(
     relation: string,
@@ -2003,7 +2003,7 @@ export class AskToolRuntime {
     const id = String(input.id ?? "").trim();
     if (!isUuid(id)) throw new Error("id musí byť UUID (objects.id).");
 
-    // Nahor: najprv fyzické umiestnenie (contained), potom dekompozícia (aggregates).
+    // Upward: first physical placement (contained), then decomposition (aggregates).
     const chainIds: string[] = [];
     let current = id;
     for (let depth = 0; depth < 8; depth++) {
@@ -2015,7 +2015,7 @@ export class AskToolRuntime {
           .eq("project_id", this.projectId)
           .eq("from_id", current)
           .is("valid_until", null)
-          .not("to_id", "is", null) // kontajner bez uzla AIM (D-183 K3)
+          .not("to_id", "is", null) // container without an AIM node (D-183 K3)
           .limit(1);
         if (error) throw new Error(error.message);
         if (data?.length) {
@@ -2028,7 +2028,7 @@ export class AskToolRuntime {
       current = parent;
     }
 
-    // D-080: odvodené zaradenie do miestností (geometria naprieč federáciou).
+    // D-080: derived assignment to spaces (geometry across the federation).
     const { data: refs, error: refErr } = await supabase
       .from("rel_referenced_in_spatial_structure")
       .select("to_id, role")
@@ -2056,9 +2056,9 @@ export class AskToolRuntime {
   }
 
   /**
-   * Obsah dokumentov (D-063, D-123) - RPC `search_documents` nad `document_pages`
-   * (text a riadky s polohou extrahuje etl/pdf_text.py). S `document_id` hľadá len
-   * v ňom, bez `q` číta stranu. Deep-link a výrezy pre open_drawing stavia server.
+   * Document content (D-063, D-123) - RPC `search_documents` over `document_pages`
+   * (text and rows with position are extracted by etl/pdf_text.py). With `document_id` it searches only
+   * in it, without `q` it reads a page. The deep link and crops for open_drawing are built by the server.
    */
   private async searchDocuments(input: Record<string, unknown>) {
     const supabase = getSupabaseAdmin();
@@ -2117,7 +2117,7 @@ export class AskToolRuntime {
       });
     }
 
-    // Riadky s polohou len pre strany zhôd (D-123); bez nich (stará extrakcia) regions chýba.
+    // Rows with position only for the pages of the matches (D-123); without them (old extraction) regions is missing.
     const blocksByPage = new Map<string, TextBlock[]>();
     const { data: pages, error: pagesError } = await supabase
       .from("document_pages")
@@ -2142,8 +2142,8 @@ export class AskToolRuntime {
   }
 
   /**
-   * Čítanie strany dokumentu (D-123): text, voliteľne riadky s polohou a odkazy z popiskov (D-130).
-   * Strany z OCR (D-169) pozná podľa `src` prvého riadku; riadky číta len pre čítanú stranu.
+   * Reading a document page (D-123): text, optionally rows with position and references from captions (D-130).
+   * It recognizes OCR pages (D-169) by the `src` of the first row; it reads rows only for the page being read.
    */
   private async readDocumentPage(doc: ObjectRow, page: number, includeBlocks: boolean, includeLinks = false) {
     const supabase = getSupabaseAdmin();
@@ -2216,9 +2216,9 @@ export class AskToolRuntime {
   }
 
   /**
-   * Dokumenty objektu cez vzťahy (D-104, `lib/data/object-documents.ts`, ten istý zdroj
-   * ako AIM karta): jeden riadok na dokument a stranu, najbližšia cesta prvá. `via` = druh
-   * nositeľa, `via_name` = nositeľ, `through` = najbližší nositeľ k objektu, ak je iný.
+   * Documents of an object through relations (D-104, `lib/data/object-documents.ts`, the same source
+   * as the AIM card): one row per document and page, the nearest path first. `via` = kind of
+   * carrier, `via_name` = carrier, `through` = the carrier nearest to the object, if different.
    */
   private async objectDocuments(objectId: string) {
     const { documents, nodes } = await fetchObjectDocuments(this.projectId, objectId);
@@ -2242,8 +2242,8 @@ export class AskToolRuntime {
   }
 
   /**
-   * `get_object(include=documents)` (D-104, D-115): dokumenty objektu, pri dokumente alebo
-   * odkaze na stranu opačne objekty, ktorých sa týka.
+   * `get_object(include=documents)` (D-104, D-115): documents of an object, for a document or
+   * a page reference conversely the objects it concerns.
    */
   private async documentsOf(obj: ObjectRow, input: Record<string, unknown>) {
     const supabase = getSupabaseAdmin();
@@ -2277,7 +2277,7 @@ export class AskToolRuntime {
 
     const doc = obj;
     const rows = await fetchDocumentObjectRows(this.projectId, doc);
-    // Objekt raz, s najbližšou cestou (riadky sú zoradené podľa depth).
+    // The object once, with the nearest path (rows are sorted by depth).
     const first = new Map<string, (typeof rows)[number]>();
     for (const r of rows) if (!first.has(r.object_id)) first.set(r.object_id, r);
     const holders = await this.loadObjects([...new Set(rows.map((r) => r.via_id).filter(Boolean) as string[])]);
@@ -2289,7 +2289,7 @@ export class AskToolRuntime {
       const h = r.via === "direct" ? "priamo" : `${r.via}: ${holderName.get(r.via_id ?? "") ?? r.via_id}`;
       byHolder[h] = (byHolder[h] ?? 0) + 1;
     }
-    // Strany (odkazy na časť dokumentu): objekt sa ráta na každej strane, na ktorej je.
+    // Pages (references to a part of a document): the object is counted on every page it is on.
     const pageObjects = new Map<number, Set<string>>();
     for (const r of rows) {
       if (!r.page) continue;
@@ -2326,7 +2326,7 @@ export class AskToolRuntime {
     };
   }
 
-  /** Uzol podľa UUID alebo object_ref — spoločné pre akčné tools. */
+  /** Node by UUID or object_ref - shared by the action tools. */
   private async resolveObject(idOrRef: string): Promise<ObjectRow | null> {
     const supabase = getSupabaseAdmin();
     const value = idOrRef.trim();
@@ -2346,8 +2346,8 @@ export class AskToolRuntime {
   }
 
   /**
-   * Dokument podľa kódu, ktorým ho volá používateľ (D.1.3.04): je na začiatku názvu,
-   * nie v object_ref. Len jednoznačná zhoda; style_in_3d má vlastný výber (pickDocument).
+   * Document by the code the user calls it by (D.1.3.04): it is at the start of the name,
+   * not in object_ref. Only an unambiguous match; style_in_3d has its own selection (pickDocument).
    */
   private async documentByCode(code: string): Promise<ObjectRow | null> {
     if (!DOCUMENT_CODE_RE.test(code)) return null;
@@ -2365,7 +2365,7 @@ export class AskToolRuntime {
 
   private async showIn3d(input: Record<string, unknown>) {
     if (input.clear === true) {
-      // D-101 (#94): zvýraznenie sa dá zrušiť samostatne, bez reset_colors.
+      // D-101 (#94): a highlight can be cancelled separately, without reset_colors.
       this.actions.push({ type: "navigate", url: `/ifc?ops=clear_focus::&r=${Date.now().toString(36)}`, label: "Zrušiť zvýraznenie" });
       return { ok: true, cleared: "zvýraznenie" };
     }
@@ -2391,10 +2391,10 @@ export class AskToolRuntime {
       throw new Error("Zadaj ids_or_refs / id_or_ref / global_ids, alebo filter (ifc_type, query...).");
     }
 
-    // Dva režimy: explicitné ids/refs (dávkové `.in()` — pri SHOW_3D_CAP prvkoch
-    // by per-prvok slučka znamenala stovky round-tripov), alebo filter — model
-    // pošle len `ifc_type:'IfcDoor'` a prvky dohľadá server (obrovský zoznam
-    // UUID v tool calle narážal na MAX_TOKENS a odpoveď sa odsekla).
+    // Two modes: explicit ids/refs (batch `.in()` - with SHOW_3D_CAP elements
+    // a per-element loop would mean hundreds of round trips), or a filter - the model
+    // sends only `ifc_type:'IfcDoor'` and the server finds the elements (a huge list of
+    // UUIDs in a tool call hit MAX_TOKENS and the answer was cut off).
     const unique = [...new Set(refs.map((r) => r.trim()))].slice(0, SHOW_3D_CAP);
     const rows: ObjectRow[] = [];
     if (unique.length > 0) {
@@ -2458,7 +2458,7 @@ export class AskToolRuntime {
       else shown.push({ label, guid });
     };
     if (unique.length > 0) {
-      // Kód, ktorý nie je object_ref (meno prvku, prvok len v IFC), dohľadá meno a motor (D-102).
+      // A code that is not an object_ref (element name, element only in IFC) is looked up by name and the engine (D-102).
       const missing = unique.filter((ref) => !isUuid(ref) && !byRef.has(ref));
       const byName = missing.length > 0 ? await resolveNamesToGuids(missing) : new Map<string, string>();
       for (const ref of unique) {
@@ -2471,7 +2471,7 @@ export class AskToolRuntime {
     } else {
       for (const obj of rows) addRow(obj);
     }
-    // GlobalId priamo z IFC motora (D-084) - prvok nemusí byť v grafe AIM.
+    // GlobalId directly from the IFC engine (D-084) - the element does not have to be in the AIM graph.
     for (const g of globalIds) {
       if (!shown.some((s) => s.guid === g)) shown.push({ label: g, guid: g });
     }
@@ -2479,9 +2479,9 @@ export class AskToolRuntime {
       throw new Error(`Žiadny z prvkov sa nedá zobraziť v 3D: ${skipped.join(", ")}.`);
     }
 
-    // Nonce `r`: každá akcia = unikátna URL → viewer focus efekt sa spustí aj
-    // pri identickej množine prvkov a klientská router cache (staleTimes)
-    // nikdy neservíruje starý render tej istej cesty (D-056).
+    // Nonce `r`: every action = a unique URL -> the viewer focus effect fires even
+    // for an identical set of elements and the client router cache (staleTimes)
+    // never serves an old render of the same path (D-056).
     this.actions.push({
       type: "navigate",
       url:
@@ -2498,20 +2498,20 @@ export class AskToolRuntime {
   }
 
   /**
-   * Výber prvku v 3D ako klik myšou (D-082): op `select::<guid>` v `ops`
-   * (wire formát D-066). Viewer nastaví selekciu, priblíži kameru a otvorí
-   * panel vlastností; AIM kartu dotiahne host po ENTITY_SELECTED ako pri kliku.
+   * Selecting an element in 3D as a mouse click (D-082): op `select::<guid>` in `ops`
+   * (wire format D-066). The viewer sets the selection, zooms the camera in and opens the
+   * properties panel; the AIM card is fetched by the host after ENTITY_SELECTED as on a click.
    */
   private async selectIn3d(input: Record<string, unknown>) {
-    // Panel sa overí pred hľadaním prvku: zlý vstup nemá stáť dotaz do DB.
+    // The panel is checked before looking up the element: bad input must not cost a DB query.
     selectPanelInput(input);
     if (input.clear === true) {
-      // D-102: výber sa dá zrušiť ako klik do prázdna.
+      // D-102: the selection can be cancelled as a click into empty space.
       this.actions.push({ type: "navigate", url: `/ifc?ops=clear_selection::&r=${Date.now().toString(36)}`, label: "Zrušiť výber" });
       return { ok: true, cleared: "výber" };
     }
     if (input.visible === true) {
-      // #315: všetky práve viditeľné prvky (izolácia, Lens, skrytie), bez limitu na počet; zoznam prvkov host nezná.
+      // #315: all currently visible elements (isolation, Lens, hiding), without a limit on count; the host does not know the element list.
       this.actions.push({ type: "navigate", url: `/ifc?ops=select_visible::&r=${Date.now().toString(36)}`, label: "3D: výber viditeľných prvkov" });
       return { ok: true, opened: "3d", selected: "visible", note: "Vybraté sú všetky práve viditeľné prvky; počet a súhrn je v stave viewera po príkaze (selection). Starší viewer príkaz nepotvrdí." };
     }
@@ -2538,7 +2538,7 @@ export class AskToolRuntime {
     for (const guid of globalIds) add({ label: guid, guid, obj: null });
     let withoutGuid = 0;
     if (filtered) {
-      // #242: celá trieda jedným volaním, rovnaký filter ako zvýraznenie (ifc_type, predefined_type, query, object_type).
+      // #242: a whole class in one call, the same filter as the highlight (ifc_type, predefined_type, query, object_type).
       const found = await this.selectByFilter(input);
       for (const item of found.items) add(item);
       withoutGuid = found.withoutGuid;
@@ -2552,7 +2552,7 @@ export class AskToolRuntime {
       url: `/ifc?ops=${encodeURIComponent(selectOp(items.map((i) => i.guid), panel))}&r=${Date.now().toString(36)}`,
       label: multi ? `3D: výber ${items.length} prvkov` : `3D: výber ${primary.label}`,
     });
-    // D-127: či zvýraznená vlastnosť na prvku je, povie hneď AIM; IFC panel to potvrdí v stave po príkaze.
+    // D-127: whether the highlighted property is on the element is told immediately by AIM; the IFC panel confirms it in the state after the command.
     const property = panel?.focus && primary.obj ? await this.propertyOf(primary.obj, panel.focus.pset, panel.focus.property) : undefined;
     return {
       ok: true,
@@ -2567,8 +2567,8 @@ export class AskToolRuntime {
   }
 
   /**
-   * Prvky pre select=true z filtra (#242): rovnaké kritériá ako zvýraznenie, najviac MAX_SELECT_REFS;
-   * viac zhôd je chyba (výber by bol ticho neúplný), model filter zúži.
+   * Elements for select=true from a filter (#242): the same criteria as the highlight, at most MAX_SELECT_REFS;
+   * more matches are an error (the selection would be silently incomplete), the model narrows the filter.
    */
   private async selectByFilter(input: Record<string, unknown>) {
     const supabase = getSupabaseAdmin();
@@ -2594,7 +2594,7 @@ export class AskToolRuntime {
     return { items, withoutGuid: rows.length - items.length };
   }
 
-  /** objects.id -> aktívny IFC GUID (len prvky prítomné v 3D modeli), dávkovo. */
+  /** objects.id -> active IFC GUID (only elements present in the 3D model), in batches. */
   private async guidsOfObjects(ids: string[]): Promise<Map<string, string>> {
     const out = new Map<string, string>();
     const supabase = getSupabaseAdmin();
@@ -2612,7 +2612,7 @@ export class AskToolRuntime {
     return out;
   }
 
-  /** Prvok výberu -> popis a aktuálny IFC GUID (D-082, D-102); chyba, ak ho viewer nemá. */
+  /** Selection element -> description and current IFC GUID (D-082, D-102); an error if the viewer does not have it. */
   private async guidForSelect(ref: string): Promise<{ label: string; guid: string; obj: ObjectRow | null }> {
     const obj = await this.resolveObject(ref);
     let label = ref;
@@ -2631,13 +2631,13 @@ export class AskToolRuntime {
         throw new Error(`${label} nemá IFC GUID — nie je v 3D modeli (kartu otvor cez open_node).`);
       }
     } else if (!isUuid(ref)) {
-      guid = (await resolveNamesToGuids([ref])).get(ref); // kód prvku (D-102)
+      guid = (await resolveNamesToGuids([ref])).get(ref); // element code (D-102)
     }
     if (!guid) throw new Error(`Prvok ${ref} neexistuje — najprv ho nájdi cez search_objects.`);
     return { label, guid, obj };
   }
 
-  /** `pset.property` v dátach AIM prvku (výskyt s dedičnosťou z typu, D-021) - D-127. */
+  /** `pset.property` in the AIM element data (occurrence with inheritance from the type, D-021) - D-127. */
   private async propertyOf(obj: ObjectRow, pset: string, property: string): Promise<PropertyLookup> {
     const relation = obj.object_type === "asset" ? "v_asset_effective" : "objects";
     const { data, error } = await getSupabaseAdmin().from(relation).select("properties").eq("project_id", this.projectId).eq("id", obj.id).limit(1);
@@ -2646,10 +2646,10 @@ export class AskToolRuntime {
   }
 
   /**
-   * Viewer operácia nad 3D scénou (D-066): ofarbenie/skrytie/izolácia prvkov.
-   * GUIDy sa resolvujú dávkovo a cestujú klientovi v URL parametri `ops`
-   * (wire formát `<op>:<arg>:<guid.guid…>`, viď parseOps v ifc-viewer.tsx);
-   * viewer si stav drží, kým ho nezruší show_all/reset_colors.
+   * Viewer operation over the 3D scene (D-066): coloring/hiding/isolation of elements.
+   * GUIDs are resolved in batches and travel to the client in the URL parameter `ops`
+   * (wire format `<op>:<arg>:<guid.guid...>`, see parseOps in ifc-viewer.tsx);
+   * the viewer keeps the state until show_all/reset_colors cancels it.
    */
   private async styleIn3d(input: Record<string, unknown>) {
     const action = String(input.action ?? "").trim();
@@ -2673,12 +2673,12 @@ export class AskToolRuntime {
 
     const nonce = () => Date.now().toString(36);
 
-    // Výnimky pri skrytí (#246): rozložia sa na GUIDy, po skrytí ich znova zobrazí `show`.
+    // Exceptions when hiding (#246): they are expanded to GUIDs, after hiding `show` displays them again.
     const exclude = parseExclude(input, action);
     const excluded = exclude ? await this.resolveExcluded(exclude) : null;
     const excludedNote = excluded ? { excluded: excluded.guids.length, ...(excluded.skipped.length ? { excluded_skipped: excluded.skipped } : {}) } : {};
 
-    // Globálne resety nepotrebujú prvky.
+    // Global resets do not need elements.
     if (action === "show_all" || action === "reset_colors" || action === "clear_isolation") {
       if (action === "reset_colors") resetDimensionTally();
       this.actions.push({
@@ -2689,7 +2689,7 @@ export class AskToolRuntime {
       return { ok: true, applied: action };
     }
 
-    // Farbenie, priehľadnosť, izolácia a X-ray nad Lens vo vieweri (D-096, D-105): pravidlá s AND, skupiny, počty.
+    // Coloring, transparency, isolation and X-ray over the Lens in the viewer (D-096, D-105): rules with AND, groups, counts.
     if (LENS_STYLE_ACTIONS.has(action)) {
       const { result, rev } = await execLensStyle(action, input, (a) => this.actions.push(a), {
         domainTypes: DOMAIN_IFC_TYPES,
@@ -2698,7 +2698,7 @@ export class AskToolRuntime {
       return result;
     }
 
-    // Skrytie / zobrazenie so systémom, zónou alebo podlažím: členov rozbalí graf AIM (GUIDy).
+    // Hiding / showing with a system, zone or storey: members are expanded by the AIM graph (GUIDs).
     if (needsScopedStyle(input)) {
       const showOp = excluded && excludeShowOp(excluded.guids);
       const done = await execScopedStyle(action, input, (a) => this.actions.push(a), {
@@ -2716,10 +2716,10 @@ export class AskToolRuntime {
       }
     }
 
-    // ── Množinový selektor (D-066 rozšírenie): celé triedy / IFC domény /
-    // súbory federácie rozkladá viewer sám z entity tables — žiadne DB
-    // round-tripy, žiadny STYLE_CAP, URL ostáva krátka pri tisícoch prvkov.
-    // predefined_type/query selektor nevie (žijú len v DB) → DB vetva nižšie.
+    // -- Set selector (D-066 extension): whole classes / IFC domains /
+    // federation files are expanded by the viewer itself from entity tables - no DB
+    // round trips, no STYLE_CAP, the URL stays short with thousands of elements.
+    // The selector does not know predefined_type/query (they live only in the DB) -> DB branch below.
     const domain = String(input.domain ?? "").trim().toLowerCase();
     if (domain && !(domain in DOMAIN_IFC_TYPES)) {
       throw new Error(`domain musí byť jedna z: ${Object.keys(DOMAIN_IFC_TYPES).join(", ")}.`);
@@ -2733,7 +2733,7 @@ export class AskToolRuntime {
     const explicitGiven =
       (Array.isArray(input.ids_or_refs) && (input.ids_or_refs as unknown[]).length > 0) ||
       globalIds.length > 0;
-    // Výber podľa hodnoty vlastnosti psetu žije len v DB → DB vetva nižšie.
+    // Selection by the value of a pset property lives only in the DB -> DB branch below.
     const propertyName = String(input.property ?? "").trim();
     const dbOnlyFilter =
       sanitizeQuery(input.predefined_type) || sanitizeQuery(input.query) || propertyName;
@@ -2772,7 +2772,7 @@ export class AskToolRuntime {
       };
     }
 
-    // ── Výber prvkov: explicitné ids_or_refs ALEBO filter (ifc_type/…/query).
+    // -- Element selection: explicit ids_or_refs OR a filter (ifc_type/.../query).
     const supabase = getSupabaseAdmin();
     const explicit = Array.isArray(input.ids_or_refs)
       ? [
@@ -2812,9 +2812,9 @@ export class AskToolRuntime {
         else skipped.push(`${ref} (neexistuje)`);
       }
     } else if (propertyName) {
-      // ── Výber podľa hodnoty vlastnosti psetu (fix „nosné = LoadBearing true",
-      // nie aproximácia triedami). Kľúče idú do PostgREST or() výrazu, preto
-      // striktný whitelist znakov (čiarka/zátvorka/medzera = syntax filtra).
+      // -- Selection by the value of a pset property (fix "load-bearing = LoadBearing true",
+      // not an approximation by classes). Keys go into the PostgREST or() expression, hence
+      // a strict character whitelist (comma/parenthesis/space = filter syntax).
       const PSET_KEY_RE = /^[A-Za-z0-9_.-]+$/;
       if (!PSET_KEY_RE.test(propertyName)) {
         throw new Error("property smie obsahovať len písmená, číslice a _ . - (napr. LoadBearing).");
@@ -2830,7 +2830,7 @@ export class AskToolRuntime {
         }
         propertyPsets = [psetNarrow];
       } else {
-        // V ktorých psetoch vlastnosť reálne existuje — slovník z dát (D-058).
+        // In which psets the property really exists - dictionary from the data (D-058).
         const { data, error } = await supabase
           .from("v_property_dictionary")
           .select("pset")
@@ -2847,8 +2847,8 @@ export class AskToolRuntime {
           );
         }
       }
-      // ilike bez % = case-insensitive presná zhoda (true/True/TRUE);
-      // v_asset_effective = properties zmergované s typom → dedičnosť zahrnutá.
+      // ilike without % = case-insensitive exact match (true/True/TRUE);
+      // v_asset_effective = properties merged with the type -> inheritance included.
       const orExpr = propertyPsets
         .map((p) => `properties->${p}->>${propertyName}.ilike.${propertyValue}`)
         .join(",");
@@ -2895,8 +2895,8 @@ export class AskToolRuntime {
       }
     }
 
-    // ── objects.id → aktívny IFC GUID (len prvky prítomné v 3D modeli);
-    // GlobalId z IFC motora (D-084) idú rovno.
+    // -- objects.id -> active IFC GUID (only elements present in the 3D model);
+    // GlobalId from the IFC engine (D-084) goes directly.
     const guids: string[] = [...globalIds];
     for (let i = 0; i < objectIds.length; i += IN_CHUNK) {
       const { data, error } = await supabase
@@ -2941,7 +2941,7 @@ export class AskToolRuntime {
     };
   }
 
-  /** Výnimky z `exclude_*` -> IFC GUIDy (id, object_ref, kód prvku v IFC alebo priamo GlobalId); chýbajúce nahlási. */
+  /** Exceptions from `exclude_*` -> IFC GUIDs (id, object_ref, element code in IFC or directly GlobalId); missing ones are reported. */
   private async resolveExcluded(ex: ExcludeInput): Promise<{ guids: string[]; skipped: string[] }> {
     const supabase = getSupabaseAdmin();
     const guids = new Set(ex.globalIds);
@@ -3005,7 +3005,7 @@ export class AskToolRuntime {
     if (input.highlights !== undefined && Array.isArray(input.highlights) && input.highlights.length > 0 && highlights.length === 0) {
       throw new Error("highlights = [{x, y, width, height}] v % strany (0-100), aspoň jeden na strane.");
     }
-    // Bez výrezu sa karta priblíži na rámiky (D-123): ich obal, najmenej 15 % na os.
+    // Without a crop the card zooms to the frames (D-123): their envelope, at least 15 % per axis.
     const region =
       docRegionInput(input.region) ??
       (input.region === undefined && highlights.length > 0 ? highlightsRegion(highlights) : undefined);
@@ -3015,14 +3015,14 @@ export class AskToolRuntime {
     if (input.target !== undefined && input.target !== "tab" && input.target !== "split") {
       throw new Error("target: tab (záložka na celú plochu) alebo split (vedľa 3D).");
     }
-    // Ručný odkaz popisku (D-160): zápis pred otvorením, aby viewer načítal už upravené odkazy.
+    // Manual caption reference (D-160): written before opening, so that the viewer loads the already edited references.
     let linkEdit: Record<string, unknown> | undefined;
     if (input.link !== undefined) {
       linkEdit = await editDrawingLink(doc, page, input.link, realLinkEditDeps(this.projectId));
     }
     if (input.in_viewer === true || region || input.target !== undefined || linkEdit) {
-      // Dokument vo vieweri (D-075 DOCUMENT_OPEN cez op `doc`, D-083), výrez strany D-117, rámiky D-123,
-      // záložka na celú plochu alebo vedľa 3D (D-132).
+      // Document in the viewer (D-075 DOCUMENT_OPEN via op `doc`, D-083), page crop D-117, frames D-123,
+      // tab over the full area or beside 3D (D-132).
       const layout = input.target === "split" ? "split" : undefined;
       this.actions.push({
         type: "navigate",
@@ -3073,19 +3073,19 @@ export class AskToolRuntime {
   }
 
   /**
-   * Akcie pre klienta: viac 3D akcií (model občas zavolá show_in_3d per prvok;
-   * style_in_3d vydáva jednu akciu per operácia) sa zlúči do jednej /ifc URL —
-   * klient vykonáva len prvú navigáciu. Focus GUIDy sa spoja do `focus`,
-   * viewer ops (D-066) sa zreťazia cez `;` do `ops` v pôvodnom poradí.
+   * Actions for the client: several 3D actions (the model sometimes calls show_in_3d per element;
+   * style_in_3d issues one action per operation) are merged into one /ifc URL -
+   * the client executes only the first navigation. Focus GUIDs are joined into `focus`,
+   * viewer ops (D-066) are chained with `;` into `ops` in the original order.
    */
   finalActions(): AskAction[] {
     return mergeIfcActions(this.actions);
   }
 
   /**
-   * Po skončení slučky: obohatí zdroje o aktívne IFC GUIDy (3D deep-link) a
-   * E4 výkresy prvkov, ktoré ich ešte nemajú. Zlyhanie obohatenia nezhodí
-   * odpoveď — zdroje sa vrátia bez neho.
+   * After the loop ends: enriches sources with active IFC GUIDs (3D deep link) and
+   * E4 drawings of elements that do not have them yet. A failed enrichment does not bring
+   * the answer down - sources are returned without it.
    */
   async finalizeSources(): Promise<AskSource[]> {
     const all = [...this.sources.values()];
@@ -3147,7 +3147,7 @@ export class AskToolRuntime {
         }
       }
     } catch {
-      // bez obohatenia — zdroje aj tak vrátime
+      // without enrichment - we return the sources anyway
     }
     return all;
   }

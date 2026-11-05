@@ -3,10 +3,10 @@ import type { ListColumnWire } from "../viewer-list";
 import { StyleInputError } from "./style-plan";
 
 /**
- * Host stĺpce `open_list` (D-174, #277): odvodené väzby z DB (`v_space_elements`, D-167) ako stĺpec
- * `source: "host"`. Viewer ich vie zobraziť až po fork PR so stĺpcom `host`; do vtedy by starší viewer
- * celú správu `OPEN_LIST` odmietol (neznámy zdroj stĺpca), preto je podpora za príznakom
- * `AIM_VIEWER_HOST_COLUMNS=1`. Bez príznaku host stĺpce z volania vypadnú a odpoveď to povie.
+ * Host columns of `open_list` (D-174, #277): derived links from the DB (`v_space_elements`, D-167) as a column
+ * `source: "host"`. The viewer can display them only after the fork PR with the `host` column; until then an older viewer would
+ * reject the whole `OPEN_LIST` message (unknown column source), so the support is behind the flag
+ * `AIM_VIEWER_HOST_COLUMNS=1`. Without the flag the host columns drop out of the call and the answer says so.
  */
 
 export const hostColumnsEnabled = (): boolean => process.env.AIM_VIEWER_HOST_COLUMNS === "1";
@@ -15,13 +15,13 @@ export const isHostColumn = (c: ListColumnWire): boolean => c.s === "host";
 
 const colName = (c: ListColumnWire) => c.l ?? c.k;
 
-/** Stĺpce na odoslanie; bez podpory viewera host stĺpce vypadnú. */
+/** Columns to send; without viewer support the host columns drop out. */
 export function splitHostColumns(columns: ListColumnWire[]): { columns: ListColumnWire[]; dropped: ListColumnWire[] } {
   if (hostColumnsEnabled()) return { columns, dropped: [] };
   return { columns: columns.filter((c) => !isHostColumn(c)), dropped: columns.filter(isHostColumn) };
 }
 
-/** Host stĺpec v zoradení, súčte, zoskupení, zvýraznení či šírke: bez podpory viewera ho tam tool neprijme. */
+/** Host column in sort, sum, grouping, highlight or width: without viewer support the tool does not accept it there. */
 export function assertHostColumnUsable(c: ListColumnWire, where: string): ListColumnWire {
   if (c.s === "host" && !hostColumnsEnabled()) {
     throw new StyleInputError(`${where}: stĺpec '${colName(c)}' viewer zatiaľ nevie (odvodené väzby z DB sa v zozname zobrazia, až keď viewer podporí stĺpec source host). Odpoveď daj z query_view v_space_elements.`);
@@ -29,7 +29,7 @@ export function assertHostColumnUsable(c: ListColumnWire, where: string): ListCo
   return c;
 }
 
-/** Odpoveď toolu o host stĺpcoch: čo sa poslalo, alebo čo vypadlo a prečo. */
+/** Tool answer about host columns: what was sent, or what dropped out and why. */
 export function hostColumnNotes(sent: ListColumnWire[], dropped: ListColumnWire[]): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   const host = sent.filter(isHostColumn);

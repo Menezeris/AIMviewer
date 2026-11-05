@@ -1,17 +1,17 @@
 /**
- * Stránkovanie a väzby generického `query_view` (D-126, issue #181). Čisté
- * funkcie bez DB, aby sa dali testovať: stabilný kľúč poradia relácie,
- * kontrola vstupu `related` a súhrn strany (total, truncated, next_offset).
+ * Paging and links of the generic `query_view` (D-126, issue #181). Pure
+ * functions without DB, so that they can be tested: stable order key of a relation,
+ * validation of the `related` input and a page summary (total, truncated, next_offset).
  */
 
-/** Najväčší posun strany (ochrana pred dopytom cez celú DB po kúskoch). */
+/** Largest page offset (protection against a query over the whole DB in pieces). */
 export const MAX_OFFSET = 100_000;
-/** Max susedov uzla pre `related`; dopyt ide po dávkach `id in (...)`. */
+/** Max neighbors of a node for `related`; the query goes in batches `id in (...)`. */
 export const RELATED_CAP = 2_000;
 
 /**
- * Kľúč stabilného poradia relácie. Väčšina relácií má `id`; pohľady bez neho
- * majú prirodzený kľúč. Pridáva sa za `order`, aby sa strany neprekrývali.
+ * Stable order key of a relation. Most relations have `id`; views without it
+ * have a natural key. It is added after `order`, so that pages do not overlap.
  */
 const STABLE_KEYS: Record<string, string[]> = {
   relationship_types: ["rel_type"],
@@ -30,7 +30,7 @@ export function stableKeys(relation: string): string[] {
   return STABLE_KEYS[relation] ?? ["id"];
 }
 
-/** Relácie uzlov (riadok = jeden `objects.id`), nad ktorými ide filter `related`. */
+/** Node relations (a row = one `objects.id`) over which the `related` filter works. */
 export const RELATED_RELATIONS = new Set([
   "objects",
   "v_asset_effective",
@@ -44,11 +44,11 @@ export const RELATED_RELATIONS = new Set([
 export interface RelatedSpec {
   relation: string;
   node: string;
-  /** to = riadok je `from_id` hrany na node (prvok v priestore, člen zóny); from = `to_id` hrany z node. */
+  /** to = the row is the `from_id` of an edge to the node (element in a space, zone member); from = `to_id` of an edge from the node. */
   direction: "to" | "from";
 }
 
-/** Skontroluje `related`; chyba = nepodporovaný vstup, nikdy ticho ignorovaný. */
+/** Validates `related`; an error = unsupported input, never silently ignored. */
 export function parseRelated(raw: unknown, relation: string, relViews: Set<string>): RelatedSpec | null {
   if (raw === undefined || raw === null) return null;
   if (typeof raw !== "object" || Array.isArray(raw)) {
@@ -69,7 +69,7 @@ export function parseRelated(raw: unknown, relation: string, relViews: Set<strin
   return { relation: rel, node, direction };
 }
 
-/** Celé číslo posunu strany v rozsahu 0..MAX_OFFSET. */
+/** Integer page offset in the range 0..MAX_OFFSET. */
 export function clampOffset(raw: unknown): number {
   if (raw === undefined) return 0;
   if (typeof raw !== "number" || !Number.isFinite(raw) || raw < 0) throw new Error("offset: celé číslo >= 0.");
@@ -81,7 +81,7 @@ export interface OrderTerm {
   ascending: boolean;
 }
 
-/** Poradie: voliteľný `order` používateľa, za ním kľúč relácie (bez opakovania stĺpca). */
+/** Order: the user's optional `order`, followed by the relation key (without repeating the column). */
 export function orderTerms(relation: string, order: OrderTerm | null): OrderTerm[] {
   const terms = order ? [order] : [];
   for (const k of stableKeys(relation)) {
@@ -90,7 +90,7 @@ export function orderTerms(relation: string, order: OrderTerm | null): OrderTerm
   return terms;
 }
 
-/** Porovnanie ako PostgREST: null na konci pri vzostupnom poradí. */
+/** Comparison like PostgREST: null at the end in ascending order. */
 function compare(a: unknown, b: unknown): number {
   if (a === b) return 0;
   if (a === null || a === undefined) return 1;
@@ -99,7 +99,7 @@ function compare(a: unknown, b: unknown): number {
   return String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0;
 }
 
-/** Zoradí riadky spojené z dávok (`related`) rovnako, ako by ich zoradila DB. */
+/** Sorts rows merged from batches (`related`) the same way the DB would sort them. */
 export function sortRows<T extends Record<string, unknown>>(rows: T[], terms: OrderTerm[]): T[] {
   return [...rows].sort((x, y) => {
     for (const t of terms) {
@@ -110,7 +110,7 @@ export function sortRows<T extends Record<string, unknown>>(rows: T[], terms: Or
   });
 }
 
-/** Súhrn strany: model vždy vidí, či má všetko a odkiaľ pokračovať. */
+/** Page summary: the model always sees whether it has everything and where to continue. */
 export function pageInfo(total: number, offset: number, returned: number) {
   const truncated = offset + returned < total;
   return {
@@ -123,9 +123,9 @@ export function pageInfo(total: number, offset: number, returned: number) {
 }
 
 /**
- * Strana, ktorá sa nezmestí do `maxChars`, sa skráti po celých riadkoch a súhrn sa prepočíta.
- * Inak by orezanie textu skrylo koniec strany a next_offset by ho preskočil (eval D-126:
- * 100 vyústiek s returned=100, viditeľných 74, ďalšia strana od 100).
+ * A page that does not fit into `maxChars` is shortened by whole rows and the summary is recomputed.
+ * Otherwise cutting the text would hide the end of the page and next_offset would skip it (eval D-126:
+ * 100 terminals with returned=100, 74 visible, the next page from 100).
  */
 export function fitPage(result: unknown, maxChars: number): unknown {
   if (typeof result !== "object" || result === null) return result;
@@ -150,6 +150,6 @@ export function fitPage(result: unknown, maxChars: number): unknown {
     if (JSON.stringify(page(mid)).length <= maxChars) lo = mid;
     else hi = mid - 1;
   }
-  // Ani jeden riadok sa nezmestí (napr. select * s veľkými psetmi): aspoň jeden, aby sa strana posunula.
+  // Not even one row fits (e.g. select * with large psets): at least one, so that the page advances.
   return page(Math.max(lo, Math.min(1, rows.length)));
 }

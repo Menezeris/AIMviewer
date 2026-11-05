@@ -12,24 +12,24 @@ import { lensPriorityOrder } from "./style-overlap";
 import { ScopeResolver } from "./style-scope";
 
 /**
- * `style_in_3d` nad Lens (D-096): farbenie, priehľadnosť a izolácia sa zostavia
- * ako pravidlá AIM chat lens a pošlú jednou URL akciou (op `lens`, formát v
- * `lib/viewer-lens.ts`). Z grafu AIM sa tu riešia len mená (systémy, podlažia),
- * GUIDy konkrétnych prvkov a id zón; vyhodnotenie a počty robí Lens vo vieweri
- * nad IFC, takže sa zhodujú s tým, čo používateľ vidí v paneli Lens.
+ * `style_in_3d` over the Lens (D-096): coloring, transparency and isolation are assembled
+ * as AIM chat lens rules and sent in one URL action (op `lens`, format in
+ * `lib/viewer-lens.ts`). From the AIM graph only names (systems, storeys),
+ * GUIDs of specific elements and zone ids are resolved here; evaluation and counts are done by the Lens in the viewer
+ * over IFC, so they match what the user sees in the Lens panel.
  */
 
-/** Konkrétne prvky idú v URL (~23 znakov na GUID), zóna ide symbolicky. */
+/** Specific elements go in the URL (~23 characters per GUID), a zone goes symbolically. */
 export const LENS_GUID_CAP = 400;
 const IFC_GUID_RE = /^[0-9A-Za-z_$]{22}$/;
 
 const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
 const strList = (v: unknown): string[] => (Array.isArray(v) ? (v as unknown[]).map(str).filter(Boolean) : []);
 
-/** Akcie `style_in_3d`, ktoré idú cez Lens (skrytie ostáva na kanáli skrývania viewera); `legend` = len panel legendy (D-119). */
+/** Actions of `style_in_3d` that go through the Lens (hiding stays on the viewer hiding channel); `legend` = only the legend panel (D-119). */
 export const LENS_STYLE_ACTIONS = new Set(["colorize", "transparent", "isolate", "xray", "legend"]);
 
-/** `legend_size` toolu (D-119); bez hodnoty `undefined`, pri akcii legend predvolene `compact` (D-125). */
+/** `legend_size` of the tool (D-119); without a value `undefined`, for the legend action `compact` by default (D-125). */
 export function legendSize(raw: unknown): LegendSize | undefined {
   const v = str(raw).toLowerCase();
   if (!v) return undefined;
@@ -37,15 +37,15 @@ export function legendSize(raw: unknown): LegendSize | undefined {
   return v as LegendSize;
 }
 
-/** Priestory a zóny: veľké objemy, ktoré plná farba zmení na nepriehľadnú hmotu (D-139, #222). */
+/** Spaces and zones: large volumes that full color turns into an opaque mass (D-139, #222). */
 const SPACE_LIKE_TYPES = new Set(["ifcspace", "ifcspatialzone", "ifczone"]);
-/** Ďalšie veľké prvky, ktoré pri plnej farbe zakryjú to, čo obklopujú (len varovanie). */
+/** Other large elements that with full color cover what they surround (warning only). */
 const BULKY_TYPES = new Set(["ifcslab", "ifcwall", "ifcwallstandardcase", "ifcroof", "ifccovering", "ifcplate", "ifccurtainwall"]);
 
 const lowerTypes = (types: string[]): string[] => types.map((t) => t.toLowerCase());
 
 export interface LensStyleOptions {
-  /** IFC domény -> triedy (zdieľané so selektorom v `tools.ts`). */
+  /** IFC domains -> classes (shared with the selector in `tools.ts`). */
   domainTypes: Record<string, string[]>;
 }
 
@@ -53,12 +53,12 @@ export interface GroupInfo {
   label: string;
   color?: string;
   systems?: string[];
-  /** Pri viacerých systémoch každý s typom a počtom členov (D-125, #177). */
+  /** With several systems each with its type and member count (D-125, #177). */
   system_members?: { system: string; type: string | null; elements: number }[];
   warning?: string;
-  /** Priesvitná farba (D-139): hodnota, ktorú žiadal model, alebo predvolená pre priestory. */
+  /** Translucent color (D-139): the value requested by the model, or the default for spaces. */
   opacity?: number;
-  /** Pravidlo priestoru (D-173): vždy priesvitný, prípadne orezaná opacity alebo rozdelený filter. */
+  /** Space rule (D-173): always translucent, possibly a clipped opacity or a split filter. */
   space_rule?: string;
   zones?: string[];
   storey?: string;
@@ -66,12 +66,12 @@ export interface GroupInfo {
   elements?: number;
 }
 
-/** Predvolená priesvitnosť priestorov a zón pri colorize; viewer ju kreslí fixnou alfou akcie transparent (fork 0,3). */
+/** Default translucency of spaces and zones for colorize; the viewer draws it with the fixed alpha of the transparent action (fork 0.3). */
 const SPACE_DEFAULT_OPACITY = 0.3;
-/** Pravidlo (D-173, #298): priestor sa nikdy nefarbí plnou farbou, strop priesvitnosti, nech model pošle akúkoľvek opacity. */
+/** Rule (D-173, #298): a space is never colored with full color, a translucency cap, whatever opacity the model sends. */
 export const SPACE_MAX_OPACITY = 0.35;
 
-/** Skupina colorize je len z priestorov / zón: podľa tried filtra, pri konkrétnych prvkoch podľa tried v DB. */
+/** A colorize group is only from spaces / zones: by the filter classes, for specific elements by classes in the DB. */
 async function isSpaceLike(scope: ScopeResolver, f: StyleFilter, types: string[], guidCount: number): Promise<boolean> {
   const lt = lowerTypes(types);
   if (lt.length > 0) return lt.every((t) => SPACE_LIKE_TYPES.has(t));
@@ -123,7 +123,7 @@ export async function resolveFilter(
   }
   const page = documentPage(f);
   if (str(f.document)) {
-    // Prvky dokumentu ide symbolicky ako zóna (D-104 krok 4): GUIDy si klient stiahne z /api/style-scope.
+    // Document elements go symbolically as a zone (D-104 step 4): the client downloads the GUIDs from /api/style-scope.
     const doc = await scope.pickDocument(str(f.document));
     out.document = { id: doc.id, ...(page ? { page } : {}) };
     info.document = (doc.name ?? doc.object_ref ?? doc.id) + (page ? `, s. ${page}` : "");
@@ -153,13 +153,13 @@ export async function resolveFilter(
   return out;
 }
 
-/** Najviac systémov, ktorým sa rátajú členovia (každý = dopyt do grafu). */
+/** Max systems whose members are counted (each = a query to the graph). */
 const MAX_DESCRIBED_SYSTEMS = 12;
 
 /**
- * Viac systémov v jednej skupine (#177): `system_type` alebo meno zoberie všetky zhody, aj
- * tie, ktoré k skupine nepatria (Odpadné hospodárstvo vo VENTILATION). Odpoveď vypíše každý
- * systém s typom a počtom členov a varuje, aby model skontroloval názvy.
+ * Several systems in one group (#177): `system_type` or a name takes all matches, also
+ * those that do not belong to the group (Odpadné hospodárstvo (waste management) in VENTILATION). The answer lists each
+ * system with its type and member count and warns the model to check the names.
  */
 async function describeSystems(scope: ScopeResolver, systems: Awaited<ReturnType<ScopeResolver["pickSystems"]>>, info: GroupInfo) {
   const shown = systems.slice(0, MAX_DESCRIBED_SYSTEMS);
@@ -174,15 +174,15 @@ async function describeSystems(scope: ScopeResolver, systems: Awaited<ReturnType
     "ak nie, zúž ju cez system=<presný názov> a povedz používateľovi, ktoré systémy si vynechal.";
 }
 
-/** Ops viewera pred lens: `clear_section=true` zruší rez v tom istom príkaze (#177). */
+/** Viewer ops before the lens: `clear_section=true` cancels the section in the same command (#177). */
 function sectionPrefix(input: Record<string, unknown>): string {
   return input.clear_section === true ? `${SECTION_CLEAR_OP};` : "";
 }
 
 /**
- * X-ray s filtrom podlažia (#187): bez `context_storey` je priesvitný kontext CELÝ model (všetky podlažia,
- * ASR aj VZT), takže pohľad zhora prekrýva podlažia a pôdorys je nečitateľný. `context_storey` (fork,
- * `APPLY_LENS xrayStoreys`) ostatné podlažia skryje; model na to upozorní.
+ * X-ray with a storey filter (#187): without `context_storey` the translucent context is the WHOLE model (all storeys,
+ * ASR and VZT), so a view from above overlaps the storeys and the floor plan is unreadable. `context_storey` (fork,
+ * `APPLY_LENS xrayStoreys`) hides the other storeys; the model is warned about it.
  */
 export function xrayStoreyWarning(storeys: string[], sectionCleared: boolean): string {
   const list = storeys.join(", ");
@@ -196,8 +196,8 @@ export function xrayStoreyWarning(storeys: string[], sectionCleared: boolean): s
 }
 
 /**
- * `context_storey` (D-140, #187): podlažia, ktoré ostanú v kontexte X-ray (normalizovaný štítok z grafu AIM).
- * Platí len s action=xray; neznáme podlažie je chyba s ponukou.
+ * `context_storey` (D-140, #187): storeys that remain in the X-ray context (normalized label from the AIM graph).
+ * Applies only with action=xray; an unknown storey is an error with an offer.
  */
 export async function resolveContextStoreys(
   scope: ScopeResolver,
@@ -215,14 +215,14 @@ export async function resolveContextStoreys(
   return { labels, names };
 }
 
-/** Krátka značka verzie lens: páruje odoslanú lens s otázkou na počty. */
+/** Short lens version tag: pairs the sent lens with the counts question. */
 export function lensRev(): string {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 }
 
 /**
- * Vykoná `style_in_3d` cez Lens; pridá jednu URL akciu a vráti odpoveď pre model
- * spolu s `rev`, podľa ktorej sa server po odoslaní spýta viewera na počty.
+ * Executes `style_in_3d` through the Lens; adds one URL action and returns the answer for the model
+ * together with `rev`, by which the server asks the viewer for counts after sending.
  */
 export async function execLensStyle(
   action: string,
@@ -235,7 +235,7 @@ export async function execLensStyle(
   const colorBy = str(input.color_by);
   const legend = legendSize(input.legend_size);
 
-  // Len legenda (D-119, D-125): malá karta, panel Lens ako veľké okno alebo späť, lens ostane.
+  // Legend only (D-119, D-125): a small card, the Lens panel as a large window or back, the lens stays.
   if (action === "legend") {
     const size = legend ?? "compact";
     push({
@@ -262,8 +262,8 @@ export async function execLensStyle(
     if (action !== "colorize") throw new StyleInputError("color_by platí len s action=colorize.");
     if (Array.isArray(input.groups)) throw new StyleInputError("color_by a groups sa nekombinujú - farby určí hodnota.");
     const ac = autoColorSpec(colorBy, str(input.color_by_key));
-    // Filter volania obmedzí farby, legendu aj počty na tieto prvky (D-119, #135); bez filtra viewer
-    // pri izolácii alebo skrytí vezme viditeľné prvky.
+    // The call filter limits colors, legend and counts to these elements (D-119, #135); without a filter the viewer
+    // takes the visible elements on isolation or hiding.
     const filter = pickFilter(input);
     const info: GroupInfo = { label: describeFilter(filter) };
     const scoped = Object.keys(filter).length > 0;
@@ -302,12 +302,12 @@ export async function execLensStyle(
   for (const g of groups) {
     const info: GroupInfo = { label: g.label, ...(g.color ? { color: `#${g.color}` } : {}) };
     const filter = await resolveFilter(scope, g.filter, opts, info, budget);
-    // Izolovaná (X-ray) skupina bez farby ostane v pôvodnom vzhľade (len kanál izolácie / ghost viewera).
+    // An isolated (X-ray) group without a color keeps its original look (only the isolation / ghost channel of the viewer).
     let a: LensWireRule["a"] = action === "transparent" ? "transparent" : g.color ? "colorize" : "isolate";
     if (a === "colorize") {
-      // Priehľadnosť (D-139, #222): opacity < 1 = priesvitná varianta; bez opacity ju dostanú priestory a zóny
-      // (podľa tried filtra, pri ids_or_refs podľa tried prvkov v DB). Priestor (D-173, #298) plnú farbu nedostane
-      // nikdy: opacity=1 aj vyššie hodnoty sa orežú na SPACE_MAX_OPACITY, zmiešaný zoznam tried sa rozdelí na dve pravidlá.
+      // Transparency (D-139, #222): opacity < 1 = translucent variant; without opacity spaces and zones get it
+      // (by filter classes, for ids_or_refs by classes of the elements in the DB). A space (D-173, #298) never gets
+      // full color: opacity=1 and higher values are clipped to SPACE_MAX_OPACITY, a mixed list of classes is split into two rules.
       const spaceLike = await isSpaceLike(scope, g.filter, filter.types, filter.guids?.length ?? 0);
       const lt = lowerTypes(filter.types);
       const spaceTypes = filter.types.filter((t) => SPACE_LIKE_TYPES.has(t.toLowerCase()));
@@ -338,7 +338,7 @@ export async function execLensStyle(
   }
   const context = await resolveContextStoreys(scope, input, action);
   const wire: LensWire = {
-    // Lens farbí prvou zhodou: posledná skupina volania ide dopredu a vyhrá pri prekrytí (D-138, #221).
+    // The Lens colors by the first match: the last group of the call goes first and wins on overlap (D-138, #221).
     r: lensPriorityOrder(rules),
     ...(legend ? { l: legend } : {}),
     ...(action === "isolate" ? { i: 1 as const } : {}),

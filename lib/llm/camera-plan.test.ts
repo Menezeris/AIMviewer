@@ -11,7 +11,7 @@ describe("set_camera: relatívny pohyb, fit, filter, kolmo na rez (D-094, D-098)
     const p = planCamera({ zoom_percent: -15 }, []);
     expect(p.ops).toEqual(["camera:keep~z=-15:"]);
     expect(parseOps(p.ops[0])).toEqual([{ op: "camera", preset: "keep", guids: [], zoomPercent: -15 }]);
-    // Relatívny krok do bridge nejde: host z neho spraví pózu (applyRelativeCamera).
+    // A relative step does not go to the bridge: the host makes a pose from it (applyRelativeCamera).
     expect(opToBridgeMessage(parseOps(p.ops[0])[0])).toEqual({ type: "SET_CAMERA", preset: "keep" });
     expect(p.result).toMatchObject({ camera: "keep", zoom_percent: -15 });
     expect(p.label).toContain("oddialenie 15 %");

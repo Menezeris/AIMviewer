@@ -1,7 +1,7 @@
 /**
- * `search_objects mode=locate` nad viac ako 500 prvkami (eval loc-vzt-ducts-2np, D-183 K3): po K3 majú podlažie aj
- * prvky VZT (526 IfcDuctSegment). Strop 500 bez poradia dával rozpad po podlažiach z náhodnej vzorky
- * (2NP 239 namiesto 249); locate má načítať všetky prvky po stranách.
+ * `search_objects mode=locate` over more than 500 elements (eval loc-vzt-ducts-2np, D-183 K3): after K3 HVAC elements
+ * have a storey too (526 IfcDuctSegment). A cap of 500 without ordering gave a breakdown by storey from a random sample
+ * (2NP 239 instead of 249); locate must load all elements by pages.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -13,7 +13,7 @@ vi.mock("server-only", () => ({}));
 
 type Row = Record<string, unknown>;
 const tables: Record<string, Row[]> = {};
-/** Najviac riadkov na jednu odpoveď ako PostgREST max_rows. */
+/** Max rows per answer like PostgREST max_rows. */
 const MAX_ROWS = 1000;
 let requests: { table: string; from: number; to: number }[] = [];
 
@@ -61,7 +61,7 @@ const F3 = "f0000000-0000-4000-8000-000000000003";
 
 beforeEach(() => {
   requests = [];
-  // 1200 potrubí: každé tretie na 2NP (400), ostatné na 3NP (800).
+  // 1200 ducts: every third on 2NP (400), the rest on 3NP (800).
   const ducts = Array.from({ length: 1200 }, (_, i) => ({
     id: `d0000000-0000-4000-8000-0000000${pad(i)}`,
     object_type: "asset",
@@ -99,7 +99,7 @@ describe("search_objects mode=locate nad 500 prvkov", () => {
     expect(out.truncated).toBe(false);
     const byName = Object.fromEntries(out.by_floor.map((g) => [g.floor?.name ?? "-", g.count]));
     expect(byName).toEqual({ "2NP": 400, "3NP": 800 });
-    // Stránky po 1000 so stabilným poradím (PostgREST max_rows).
+    // Pages of 1000 with a stable order (PostgREST max_rows).
     expect(requests.filter((r) => r.table === "objects")).toEqual([
       { table: "objects", from: 0, to: 999 },
       { table: "objects", from: 1000, to: 1199 },

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { foldText, matchBlocks, parseBlocks, queryStems, regionAround, type TextBlock } from "./document-text";
 
-// Výrez z pôdorysu D.1.1.01 1NP (riadky z etl/pdf_text.py, bbox v % strany).
+// Crop from the floor plan D.1.1.01 1NP (rows from etl/pdf_text.py, bbox in % of the page).
 const BLOCKS: TextBlock[] = [
   { t: "1.05", x: 38.33, y: 56.05, w: 0.75, h: 1.2 },
   { t: "Technická miestnosť", x: 37.48, y: 57.46, w: 2.46, h: 0.8 },

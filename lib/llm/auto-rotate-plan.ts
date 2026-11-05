@@ -10,12 +10,12 @@ import {
 import { ViewInputError, type ViewPlan } from "./view-plan";
 
 /**
- * Čistá logika `set_camera auto_rotate` (D-154): plynulé otáčanie kamery okolo cieľa dokola, kým ho používateľ alebo
- * príkaz nezastaví. Jedno volanie = jedna zmena: s presetom, cieľom ani relatívnym krokom sa nekombinuje, lebo každý
- * ďalší pohyb kamery otáčanie zastaví (fork ho vníma ako zásah).
+ * Pure logic of `set_camera auto_rotate` (D-154): smooth orbiting of the camera around the target in circles until the user or a
+ * command stops it. One call = one change: it is not combined with a preset, target or relative step, because every
+ * other camera movement stops the orbiting (the fork perceives it as an intervention).
  */
 
-/** Polia, ktoré s `auto_rotate` nejdú (pohyb kamery inak). */
+/** Fields that do not go with `auto_rotate` (camera movement otherwise). */
 const MOTION_FIELDS = [
   "preset", "fit", "projection", "zoom_percent", "orbit_h_deg", "orbit_v_deg", "pan_x_percent", "pan_y_percent",
   "margin_percent", "area", "target_ids_or_refs", "global_ids", "ifc_type", "ifc_types", "domain", "model",
@@ -23,7 +23,7 @@ const MOTION_FIELDS = [
 
 const given = (v: unknown) => v !== undefined && v !== null && v !== "" && !(Array.isArray(v) && v.length === 0);
 
-/** `auto_rotate` zo vstupu: null = parameter nie je, inak plán otáčania. */
+/** `auto_rotate` from the input: null = the parameter is absent, otherwise the orbit plan. */
 export function planAutoRotate(input: Record<string, unknown>): ViewPlan | null {
   if (!given(input.auto_rotate)) {
     if (given(input.speed_deg_s) || given(input.direction)) {

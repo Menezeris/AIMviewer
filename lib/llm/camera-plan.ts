@@ -22,9 +22,9 @@ import { planAutoRotate } from "./auto-rotate-plan";
 import { ViewInputError, type ViewPlan } from "./view-plan";
 
 /**
- * Čistá logika `set_camera` (D-083, rozšírenie D-094, revízia D-098): preset, fit, cieľ (GUIDy
- * alebo selektor ako `style_in_3d`), okraj a časť cieľa (D-128) a relatívne kroky -> op `camera`/`camera_sel`
- * a odpoveď pre model. Dohľadanie cieľov v DB robí `view-tools.ts`.
+ * Pure logic of `set_camera` (D-083, extension D-094, revision D-098): preset, fit, target (GUIDs
+ * or a selector like `style_in_3d`), margin and part of the target (D-128) and relative steps -> op `camera`/`camera_sel`
+ * and the answer for the model. Looking up targets in the DB is done by `view-tools.ts`.
  */
 
 const FIT_LABEL: Record<CameraFit, string> = {
@@ -49,7 +49,7 @@ function rangeNum(raw: unknown, name: string, range: { min: number; max: number 
   return raw === 0 ? undefined : raw;
 }
 
-/** Filter cieľa (ifc_type / ifc_types / domain / model) -> selektor, ktorý rozloží viewer. */
+/** Target filter (ifc_type / ifc_types / domain / model) -> selector that the viewer expands. */
 function cameraSelector(input: Record<string, unknown>): OpsSelector | null {
   const domain = String(input.domain ?? "").trim().toLowerCase();
   if (domain && !(domain in DOMAIN_IFC_TYPES)) {
@@ -68,7 +68,7 @@ function hasItems(raw: unknown): boolean {
 }
 
 export function planCamera(input: Record<string, unknown>, targetGuids: string[]): ViewPlan {
-  // Otáčanie dokola (D-154) je samostatná akcia, nie pohyb o krok.
+  // Orbiting around (D-154) is a separate action, not a step movement.
   const rotate = planAutoRotate(input);
   if (rotate) return rotate;
   const presetRaw = String(input.preset ?? "").trim();
@@ -114,7 +114,7 @@ export function planCamera(input: Record<string, unknown>, targetGuids: string[]
   if (py !== undefined) move.panY = py;
   const relative = hasRelativeStep(move);
 
-  // Okraj a časť cieľa (D-128) rámuje fork z obálok prvkov: cieľ alebo výber, nie viditeľné.
+  // Margin and part of the target (D-128) are framed by the fork from the element envelopes: the target or selection, not the visible ones.
   const framesBoxes = hasTarget || fit === "selection";
   const areaRaw = input.area === undefined || input.area === null ? "" : String(input.area).trim();
   if (areaRaw && !(CAMERA_AREAS as readonly string[]).includes(areaRaw)) {
@@ -135,12 +135,12 @@ export function planCamera(input: Record<string, unknown>, targetGuids: string[]
     }
     move.marginPercent = m;
   } else if (framesBoxes && (hasTarget || area)) {
-    // Cieľ bez okraja: predvolený okraj, nie tesný záber upstreamu (#172). Samotný fit=selection ostáva ako tlačidlo.
+    // Target without a margin: the default margin, not the tight framing of upstream (#172). fit=selection alone stays as a button.
     move.marginPercent = DEFAULT_MARGIN_PERCENT;
   }
   if (area) move.area = area;
-  // Relatívny krok sa počíta z aktuálnej pózy; preset, fit či cieľ ju menia
-  // animáciou, takže v jednom volaní by sa krok počítal zo starej (D-098).
+  // A relative step is computed from the current pose; a preset, fit or target changes it
+  // by animation, so in one call the step would be computed from the old one (D-098).
   if (relative && (preset !== "keep" || fit || hasTarget || projection)) {
     throw new ViewInputError(
       "Relatívny krok (zoom_percent, orbit_*, pan_*) daj v samostatnom volaní set_camera bez presetu, fit, cieľa a projection; najprv nastav pohľad, potom krok.",
