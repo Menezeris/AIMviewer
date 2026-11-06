@@ -4,6 +4,7 @@ import { LibraryInputError, LibrarySchemaMissingError, setModelBinding } from "@
 import { supabaseIdsLibraryStore } from "@/lib/ids/library-store";
 import { idsWriteGuard, jsonFail, NO_STORE, readJson } from "@/lib/ids/route-guard";
 import { supabaseIdsStore } from "@/lib/ids/store";
+import { withRequestAuth } from "@/lib/auth/request";
 import { withRequestProject } from "@/lib/project/request";
 import { currentProjectId } from "@/lib/live/caller";
 
@@ -43,4 +44,4 @@ async function postHandler(req: Request) {
   }
 }
 
-export const POST = withRequestProject(postHandler);
+export const POST = withRequestAuth(withRequestProject(postHandler), { source: "app:/api/ids/models", write: true });

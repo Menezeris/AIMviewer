@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { clientIpKey, createRateLimiter, isCrossOriginBlocked } from "@/lib/api-guard";
 import { checkImportRequest, type ImportRequest } from "@/lib/icdd/import";
 import { applyIcddImport, computeImportPreview, ImportConflictError, saveImportPreview } from "@/lib/icdd/import-fetch";
+import { withRequestAuth } from "@/lib/auth/request";
 import { withRequestProject } from "@/lib/project/request";
 
 /**
@@ -63,4 +64,4 @@ async function postHandler(req: Request) {
   }
 }
 
-export const POST = withRequestProject(postHandler);
+export const POST = withRequestAuth(withRequestProject(postHandler), { source: "app:/api/icdd/import", write: true });

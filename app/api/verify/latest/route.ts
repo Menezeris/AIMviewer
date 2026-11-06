@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { GUID_RE, jsonFail, NO_STORE, verifyGuard } from "@/lib/verify/route-guard";
 import { latestVerification } from "@/lib/verify/service";
+import { withRequestAuth } from "@/lib/auth/request";
 import { withRequestProject } from "@/lib/project/request";
 
 /**
@@ -25,4 +26,4 @@ async function getHandler(req: Request) {
   }
 }
 
-export const GET = withRequestProject(getHandler);
+export const GET = withRequestAuth(withRequestProject(getHandler), { source: "app:/api/verify/latest", write: false });

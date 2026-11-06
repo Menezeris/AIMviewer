@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { detail, HlavaMigraciaChyba, HlavaVstupChyba, prehlad } from "@/lib/library/head";
 import { supabaseHlavaStore } from "@/lib/library/head-store";
+import { withRequestAuth } from "@/lib/auth/request";
 import { withRequestProject } from "@/lib/project/request";
 
 /**
@@ -38,4 +39,4 @@ async function getHandler(req: Request) {
   }
 }
 
-export const GET = withRequestProject(getHandler);
+export const GET = withRequestAuth(withRequestProject(getHandler), { source: "app:/api/library", write: false });

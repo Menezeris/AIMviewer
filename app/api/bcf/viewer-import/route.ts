@@ -5,6 +5,7 @@ import { importBcfArchive } from "@/lib/bcf/import";
 import { defaultBcfDeps } from "@/lib/bcf/runtime";
 import { BcfInputError } from "@/lib/bcf/tools";
 import { BCF_VIEWER_IMPORT_MAX_BYTES, summaryToWire } from "@/lib/viewer-bcf-import";
+import { withRequestAuth } from "@/lib/auth/request";
 import { withRequestProject } from "@/lib/project/request";
 
 /**
@@ -48,4 +49,4 @@ async function postHandler(req: Request): Promise<Response> {
   }
 }
 
-export const POST = withRequestProject(postHandler);
+export const POST = withRequestAuth(withRequestProject(postHandler), { source: "app:/api/bcf/viewer-import", write: true });

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { fetchSpaceSiblings } from "@/lib/data/filter";
 import { currentProjectId } from "@/lib/live/caller";
+import { withRequestAuth } from "@/lib/auth/request";
 import { withRequestProject } from "@/lib/project/request";
 
 const UUID_RE =
@@ -32,4 +33,4 @@ async function getHandler(
   }
 }
 
-export const GET = withRequestProject(getHandler);
+export const GET = withRequestAuth(withRequestProject(getHandler), { source: "app:/api/space-siblings/[objectId]", write: false });

@@ -15,6 +15,7 @@ import {
   type CaptureKind,
 } from "@/lib/data/captures";
 import { currentProjectId } from "@/lib/live/caller";
+import { withRequestAuth } from "@/lib/auth/request";
 import { withRequestProject } from "@/lib/project/request";
 
 /**
@@ -149,5 +150,5 @@ async function postHandler(req: Request) {
   }
 }
 
-export const GET = withRequestProject(getHandler);
-export const POST = withRequestProject(postHandler);
+export const GET = withRequestAuth(withRequestProject(getHandler), { source: "app:/api/captures", write: false });
+export const POST = withRequestAuth(withRequestProject(postHandler), { source: "app:/api/captures", write: true });

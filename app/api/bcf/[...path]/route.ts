@@ -7,6 +7,7 @@ import { LEGACY_PROJECT_ID, handleBcfApi } from "@/lib/bcf/api";
 import { currentProject } from "@/lib/live/caller";
 import { defaultBcfDeps } from "@/lib/bcf/runtime";
 import { snapshotFor } from "@/lib/bcf/snapshot-http";
+import { withRequestAuth } from "@/lib/auth/request";
 import { withRequestProject } from "@/lib/project/request";
 
 /**
@@ -88,9 +89,9 @@ async function bcfProjectCode(_req: Request, ctx: { params: Promise<{ path: stri
   return code && code !== LEGACY_PROJECT_ID ? code : null;
 }
 
-export const GET = withRequestProject(handle, { code: bcfProjectCode });
-export const POST = withRequestProject(handle, { code: bcfProjectCode });
-export const PUT = withRequestProject(handle, { code: bcfProjectCode });
+export const GET = withRequestAuth(withRequestProject(handle, { code: bcfProjectCode }), { source: "app:/api/bcf", write: false });
+export const POST = withRequestAuth(withRequestProject(handle, { code: bcfProjectCode }), { source: "app:/api/bcf", write: true });
+export const PUT = withRequestAuth(withRequestProject(handle, { code: bcfProjectCode }), { source: "app:/api/bcf", write: true });
 
 export async function OPTIONS(): Promise<Response> {
   return new NextResponse(null, { status: 204, headers: CORS });

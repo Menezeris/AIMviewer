@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { loadListHostValues } from "@/lib/data/list-host-values";
 import { LIST_HOST_KEYS, type ListHostKey } from "@/lib/viewer-list";
 import { currentProjectId } from "@/lib/live/caller";
+import { withRequestAuth } from "@/lib/auth/request";
 import { withRequestProject } from "@/lib/project/request";
 
 /**
@@ -25,4 +26,4 @@ async function getHandler(req: Request) {
   }
 }
 
-export const GET = withRequestProject(getHandler);
+export const GET = withRequestAuth(withRequestProject(getHandler), { source: "app:/api/list-host-values", write: false });

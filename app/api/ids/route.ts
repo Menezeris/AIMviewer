@@ -6,6 +6,7 @@ import { supabaseIdsStore } from "@/lib/ids/store";
 import { conflictDiff, IdsInputError, saveFromViewer, type IdsToolDeps } from "@/lib/ids/tools";
 import { IdsConflictError } from "@/lib/ids/types";
 import { MAX_IDS_XML, parseIdsSave } from "@/lib/viewer-ids";
+import { withRequestAuth } from "@/lib/auth/request";
 import { withRequestProject } from "@/lib/project/request";
 import { currentProjectId } from "@/lib/live/caller";
 
@@ -104,5 +105,5 @@ async function postHandler(req: Request) {
   }
 }
 
-export const GET = withRequestProject(getHandler);
-export const POST = withRequestProject(postHandler);
+export const GET = withRequestAuth(withRequestProject(getHandler), { source: "app:/api/ids", write: false });
+export const POST = withRequestAuth(withRequestProject(postHandler), { source: "app:/api/ids", write: true });

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { fetchUnderlayDrawings } from "@/lib/data/drawing";
 import { currentProjectId } from "@/lib/live/caller";
+import { withRequestAuth } from "@/lib/auth/request";
 import { withRequestProject } from "@/lib/project/request";
 
 /**
@@ -18,4 +19,4 @@ async function getHandler() {
   }
 }
 
-export const GET = withRequestProject<[Request]>(getHandler);
+export const GET = withRequestAuth(withRequestProject<[Request]>(getHandler), { source: "app:/api/underlay", write: false });
