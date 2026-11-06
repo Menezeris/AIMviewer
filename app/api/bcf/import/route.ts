@@ -6,6 +6,7 @@ import { clientIpKey, createRateLimiter } from "@/lib/api-guard";
 import { importBcfArchive, type ConflictPolicy } from "@/lib/bcf/import";
 import { defaultBcfDeps } from "@/lib/bcf/runtime";
 import { BcfInputError } from "@/lib/bcf/tools";
+import { withRequestAuth } from "@/lib/auth/request";
 import { withRequestProject } from "@/lib/project/request";
 
 /**
@@ -75,4 +76,4 @@ export async function OPTIONS(): Promise<Response> {
   return new NextResponse(null, { status: 204, headers: CORS });
 }
 
-export const POST = withRequestProject(postHandler);
+export const POST = withRequestAuth(withRequestProject(postHandler), { source: "app:/api/bcf/import", write: true });

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { GUID_RE, jsonFail, NO_STORE, readBody, verifyEngineEnabled, verifyGuard, verifySaveEnabled } from "@/lib/verify/route-guard";
 import { runVerification } from "@/lib/verify/service";
+import { withRequestAuth } from "@/lib/auth/request";
 import { withRequestProject } from "@/lib/project/request";
 
 /**
@@ -29,4 +30,4 @@ async function postHandler(req: Request) {
   }
 }
 
-export const POST = withRequestProject(postHandler);
+export const POST = withRequestAuth(withRequestProject(postHandler), { source: "app:/api/verify/run", write: true });

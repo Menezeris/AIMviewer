@@ -5,6 +5,7 @@ import { overXsd } from "@/lib/library/ids/xsd";
 import { brana, chybaServera, kodKniznice, neznamaKniznica, odpoved, vstup } from "@/lib/library/editor-server";
 import { supabaseSkladVydania, supabaseUloziste, VydanieMigraciaChyba } from "@/lib/library/release-db";
 import { currentProjectId } from "@/lib/live/caller";
+import { withRequestAuth } from "@/lib/auth/request";
 import { withRequestProject } from "@/lib/project/request";
 
 /**
@@ -27,4 +28,4 @@ async function postHandler(req: Request, ctx: { params: Promise<{ library: strin
   }
 }
 
-export const POST = withRequestProject(postHandler);
+export const POST = withRequestAuth(withRequestProject(postHandler), { source: "app:/api/library/editor/[library]/vydaj", write: true });

@@ -10,6 +10,7 @@ import { isValidGeorefV1 } from "@/lib/data/drawing";
 import { calibrationFromV1, editCalibration, isValidCalibration, mergeCalibration, visibilityOnlyUpdate, type GeorefCalibration, type GeorefV1 } from "@/lib/data/georef";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { currentProjectId } from "@/lib/live/caller";
+import { withRequestAuth } from "@/lib/auth/request";
 import { withRequestProject } from "@/lib/project/request";
 
 /**
@@ -145,4 +146,4 @@ async function patchHandler(
   return NextResponse.json({ ok: true });
 }
 
-export const PATCH = withRequestProject(patchHandler);
+export const PATCH = withRequestAuth(withRequestProject(patchHandler), { source: "app:/api/underlay/[documentId]", write: true });

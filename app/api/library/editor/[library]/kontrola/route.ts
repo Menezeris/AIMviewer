@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { over } from "@/lib/library/editor-api";
 import { chybaServera, kodKniznice, neznamaKniznica, odpoved, sklad, vstup } from "@/lib/library/editor-server";
+import { withRequestAuth } from "@/lib/auth/request";
 import { withRequestProject } from "@/lib/project/request";
 
 /** `POST kontrola`: diagnostics of the working copy from the editor, nothing is written (D-186, U16). */
@@ -19,4 +20,4 @@ async function postHandler(req: Request, ctx: { params: Promise<{ library: strin
   }
 }
 
-export const POST = withRequestProject(postHandler);
+export const POST = withRequestAuth(withRequestProject(postHandler), { source: "app:/api/library/editor/[library]/kontrola", write: true });

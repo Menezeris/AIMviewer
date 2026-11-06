@@ -4,6 +4,7 @@ import { clientIpKey } from "@/lib/api-guard";
 import { MarkupParamError, parseMarkupParam } from "@/lib/bcf/markup";
 import { pngHeaders, snapshotFor } from "@/lib/bcf/snapshot-http";
 import { parseDocRegion } from "@/lib/viewer-ops";
+import { withRequestAuth } from "@/lib/auth/request";
 import { withRequestProject } from "@/lib/project/request";
 
 /**
@@ -50,4 +51,4 @@ async function getHandler(req: Request, ctx: { params: Promise<{ id: string }> }
   return new Response(new Uint8Array(out.png), { status: 200, headers: { ...CORS, ...pngHeaders(out.revisionChanged) } });
 }
 
-export const GET = withRequestProject(getHandler);
+export const GET = withRequestAuth(withRequestProject(getHandler), { source: "app:/api/drawing/[id]/snapshot", write: false });

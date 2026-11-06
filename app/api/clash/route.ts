@@ -4,6 +4,7 @@ import { clientIpKey, createRateLimiter, isCrossOriginBlocked } from "@/lib/api-
 import { supabaseClashStore } from "@/lib/clash/store";
 import { ClashViewerError, listForViewer, loadForViewer, saveFromViewer } from "@/lib/clash/viewer";
 import { CLASH_UUID_RE, parseClashSave } from "@/lib/viewer-clash";
+import { withRequestAuth } from "@/lib/auth/request";
 import { withRequestProject } from "@/lib/project/request";
 import { currentProjectId } from "@/lib/live/caller";
 
@@ -89,5 +90,5 @@ async function postHandler(req: Request) {
   }
 }
 
-export const GET = withRequestProject(getHandler);
-export const POST = withRequestProject(postHandler);
+export const GET = withRequestAuth(withRequestProject(getHandler), { source: "app:/api/clash", write: false });
+export const POST = withRequestAuth(withRequestProject(postHandler), { source: "app:/api/clash", write: true });

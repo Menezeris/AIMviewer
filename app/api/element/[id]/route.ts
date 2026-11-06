@@ -9,6 +9,7 @@ import { fetchDerivedRelations } from "@/lib/data/derivations";
 import { fetchDocumentTypes, fetchObjectDocuments } from "@/lib/data/object-documents";
 import type { ElementDetail } from "@/lib/aim-panel";
 import { currentProjectId } from "@/lib/live/caller";
+import { withRequestAuth } from "@/lib/auth/request";
 import { withRequestProject } from "@/lib/project/request";
 
 /** Documents of an element via relations with a kind code (D-104); on error the card shows direct links. */
@@ -107,4 +108,4 @@ async function captureMediaOf(cap: CaptureSummary, inherited: boolean): Promise<
     });
 }
 
-export const GET = withRequestProject(getHandler);
+export const GET = withRequestAuth(withRequestProject(getHandler), { source: "app:/api/element/[id]", write: false });

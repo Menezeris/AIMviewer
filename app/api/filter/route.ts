@@ -5,6 +5,7 @@ import {
   fetchByClassificationPrefix,
 } from "@/lib/data/filter";
 import { currentProjectId } from "@/lib/live/caller";
+import { withRequestAuth } from "@/lib/auth/request";
 import { withRequestProject } from "@/lib/project/request";
 
 async function getHandler(req: NextRequest) {
@@ -38,4 +39,4 @@ async function getHandler(req: NextRequest) {
   }
 }
 
-export const GET = withRequestProject(getHandler);
+export const GET = withRequestAuth(withRequestProject(getHandler), { source: "app:/api/filter", write: false });

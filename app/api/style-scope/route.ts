@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { MAX_ZONE_GUIDS } from "@/lib/viewer-lens";
 import { StyleInputError } from "@/lib/llm/style-plan";
 import { ScopeResolver } from "@/lib/llm/style-scope";
+import { withRequestAuth } from "@/lib/auth/request";
 import { withRequestProject } from "@/lib/project/request";
 
 /**
@@ -63,4 +64,4 @@ async function getHandler(req: Request) {
   }
 }
 
-export const GET = withRequestProject(getHandler);
+export const GET = withRequestAuth(withRequestProject(getHandler), { source: "app:/api/style-scope", write: false });

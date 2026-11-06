@@ -5,6 +5,7 @@ import { currentModelRevisions, supabaseSavedViewStore, type SavedViewStore } fr
 import { deleteWire, listWires, renameWire, saveWire } from "@/lib/views/wire";
 import { isViewWire } from "@/lib/viewer-views";
 import { currentProjectId } from "@/lib/live/caller";
+import { withRequestAuth } from "@/lib/auth/request";
 import { withRequestProject } from "@/lib/project/request";
 
 /**
@@ -125,7 +126,7 @@ async function deleteHandler(req: Request) {
   });
 }
 
-export const GET = withRequestProject<[Request]>(getHandler);
-export const POST = withRequestProject(postHandler);
-export const PATCH = withRequestProject(patchHandler);
-export const DELETE = withRequestProject(deleteHandler);
+export const GET = withRequestAuth(withRequestProject<[Request]>(getHandler), { source: "app:/api/saved-views", write: false });
+export const POST = withRequestAuth(withRequestProject(postHandler), { source: "app:/api/saved-views", write: true });
+export const PATCH = withRequestAuth(withRequestProject(patchHandler), { source: "app:/api/saved-views", write: true });
+export const DELETE = withRequestAuth(withRequestProject(deleteHandler), { source: "app:/api/saved-views", write: true });

@@ -30,6 +30,9 @@ decisions: [`DECISIONS.md`](DECISIONS.md), plan: [`ROADMAP.md`](ROADMAP.md).
    - optional: `LLM_PROVIDER` (`gemini` | `anthropic` | `mock`; mock is for
      development and tests without a key), `LLM_MODEL` (default `gemini-flash-lite-latest`,
      or `claude-sonnet-5` with Anthropic)
+   - optional, shared sign-in (D-200): `BETTER_AUTH_SECRET` = the same value as in the local
+     AIMforked app (a dev value, never the production one). Without it AIM runs without sign-in.
+     `AIM_SIGN_IN_REQUIRED=true` refuses writes without a platform session (401).
 
    > `.env.local` is gitignored; **never** commit it. The `service_role`
    > key is read only server-side and never reaches the browser.
@@ -52,6 +55,9 @@ decisions: [`DECISIONS.md`](DECISIONS.md), plan: [`ROADMAP.md`](ROADMAP.md).
    - `SUPABASE_URL` = `https://acwoupricatirhlfkhvk.supabase.co`
    - `SUPABASE_SERVICE_ROLE_KEY` = the service_role key
    - `GEMINI_API_KEY` = key for the LLM interface `/ask` (D-056; free tier)
+   - `BETTER_AUTH_SECRET` = the same value as in the AIMforked deployment of the same
+     environment (D-200); previews never get the production value
+   - `AIM_SIGN_IN_REQUIRED` = `true` once the platform domain is live (D-200)
    - Scope: Production + Preview + Development. The keys are **secret** (they are not
      `NEXT_PUBLIC_*`, so they do not get into the client bundle).
 3. **Deploy** -> the app runs on `*.vercel.app`. A push to `main` = auto-deploy.

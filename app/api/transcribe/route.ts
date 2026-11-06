@@ -6,6 +6,7 @@ import {
   isCrossOriginBlocked,
 } from "@/lib/api-guard";
 import { getSttProvider, SttConfigError } from "@/lib/stt/provider";
+import { withRequestAuth } from "@/lib/auth/request";
 import { withRequestProject } from "@/lib/project/request";
 
 /**
@@ -96,4 +97,4 @@ async function postHandler(req: Request) {
   }
 }
 
-export const POST = withRequestProject(postHandler);
+export const POST = withRequestAuth(withRequestProject(postHandler), { source: "app:/api/transcribe", write: false });

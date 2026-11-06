@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { jsonFail, NO_STORE, readBody, verifyEngineEnabled, verifyGuard, verifySaveEnabled } from "@/lib/verify/route-guard";
 import { runAllVerification } from "@/lib/verify/service";
 import { VERIFY_CHECK_SPACES } from "@/lib/verify/wire";
+import { withRequestAuth } from "@/lib/auth/request";
 import { withRequestProject } from "@/lib/project/request";
 
 /**
@@ -36,4 +37,4 @@ async function postHandler(req: Request) {
   }
 }
 
-export const POST = withRequestProject(postHandler);
+export const POST = withRequestAuth(withRequestProject(postHandler), { source: "app:/api/verify/run_all", write: true });

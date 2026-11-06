@@ -6,11 +6,11 @@ import { AsyncLocalStorage } from "node:async_hooks";
  * function `aim_pre_request` copies them into `app.person_id` / `app.source`, which the audit triggers
  * record. It trusts them only for the service_role key, which only this server holds.
  *
- * Until shared sign-in (step 5) the person is unknown; a route may still name its source
- * (`withAuditContext({ source: "app:/api/bcf" }, ...)`). Without a context the source is `app`.
+ * API routes get the context from `withRequestAuth` (`lib/auth/request.ts`, D-200): the person of the
+ * platform session and the route as the source. Without a context the source is `app`.
  */
 export type AuditContext = {
-  /** IfcPerson node id (`platform.users.person_id`), unknown until step 5. */
+  /** IfcPerson node id (`platform.users.person_id`); null without a linked session. */
   personId?: string | null;
   /** Writer label: `app`, `app:<route>`, `mcp`, `fork`, `telegram` ... */
   source: string;
