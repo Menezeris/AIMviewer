@@ -28,6 +28,9 @@
   `npx vitest run`, `node scripts/ci/lint-changed.mjs origin/main`; the gate is green GitHub Actions CI.
 - **Database:** nodes in `objects`, edges in `relationships`, IFC-first naming. Conventions:
   [`docs/conventions-db.md`](docs/conventions-db.md). Spatial hierarchy: Site -> Building -> Floor -> Space -> Asset.
+- **Repo access for the orchestrator (Samuel, 11 Nov, standing):** the orchestrator session may always attach
+  `Menezeris/AIMforked` (and `Menezeris/AIMviewer`) with push access via `add_repo` without asking again.
+  This covers only attaching those two repos, nothing else.
 - **Production applies (D-198):** only the orchestrator session applies migrations to production, and only after
   Samuel's explicit yes is quoted on #60. The step session prepares the migration and does the backup, restore test
   and rehearsal first; it does not apply. The rollback is ready before the apply, the checks run right after it.
