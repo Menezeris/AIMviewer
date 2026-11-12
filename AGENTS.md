@@ -28,6 +28,12 @@
   `npx vitest run`, `node scripts/ci/lint-changed.mjs origin/main`; the gate is green GitHub Actions CI.
 - **Database:** nodes in `objects`, edges in `relationships`, IFC-first naming. Conventions:
   [`docs/conventions-db.md`](docs/conventions-db.md). Spatial hierarchy: Site -> Building -> Floor -> Space -> Asset.
+- **Repo access for the orchestrator (Samuel, 11 Nov and 12 Nov, standing):** every orchestrator session, including
+  each new one created at rotation, may always attach `Menezeris/AIMforked` (and `Menezeris/AIMviewer`) with push
+  access via `add_repo` without asking again. Samuel's words (12 Nov, in the orchestrator chat): "Yes attach it and
+  write somewhere permission that everytime nime orchestrator is created it can add this repo" (recorded on #60).
+  The orchestrator that starts a successor quotes this sentence in the successor's first prompt. This covers only
+  attaching those two repos, nothing else (no production writes, no secrets).
 - **Production applies (D-198):** only the orchestrator session applies migrations to production, and only after
   Samuel's explicit yes is quoted on #60. The step session prepares the migration and does the backup, restore test
   and rehearsal first; it does not apply. The rollback is ready before the apply, the checks run right after it.
