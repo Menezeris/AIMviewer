@@ -49,5 +49,8 @@
         ]
       }
     ]
+  },
+  "skillOverrides": {
+    "update-config": "user-invocable-only"
   }
 }
