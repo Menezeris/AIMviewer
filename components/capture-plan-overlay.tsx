@@ -170,7 +170,9 @@ export function CapturePlanOverlay({
   const pagePins = pins.filter((p) => p.page === page && p.id !== placeId);
 
   return (
-    <div ref={containerRef} className="absolute inset-0 overflow-hidden">
+    // pointer-events-none: the layer covers the whole page, so without it the clickable element
+    // links of the drawing under it could not be clicked; pins and the placement layer opt back in.
+    <div ref={containerRef} className="pointer-events-none absolute inset-0 overflow-hidden">
       {/* Saved pins - a click opens the photo/360°. In placement mode they are covered
           by the click layer (they do not interfere), so there is no need to turn them off separately. */}
       {pagePins.map((pin) => {
