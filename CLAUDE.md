@@ -13,13 +13,15 @@ Key documents: [`AGENTS.md`](AGENTS.md) (conventions) · [`DECISIONS.md`](DECISI
 
 ## Standing permissions (auto-loaded, so every new session sees them at start)
 
-- **Attaching repositories (Samuel, 11, 12 and 14 Nov, standing):** every orchestrator session, including each new
-  one started at rotation by another session or from the Claude app, may always attach `Menezeris/AIMforked` and
-  `Menezeris/AIMviewer` with push access via `add_repo`, as its first step, without asking again. Samuel's words
-  (12 Nov): "Yes attach it and write somewhere permission that everytime nime orchestrator is created it can add this
-  repo". Repeated on 14 Nov after a new orchestrator was blocked: "it should be already done that you can add repo
-  yourself everytime in the new sessions ... make sure this situation doesnt happen again". This covers only attaching
-  those two repos (no production writes, no secrets). Details and the rest of the rules: `AGENTS.md`, issue #60.
+- **Attaching repositories (Samuel, 11, 12, 14 and 15 Nov, standing):** every orchestrator session, including each
+  new one started at rotation by another session or from the Claude app, may always attach any repository it needs
+  (`Menezeris/AIMforked`, `Menezeris/AIMviewer`, `Menezeris/OCB` and any other) with push access via `add_repo`,
+  without asking again. Start a session with AIMforked or AIMviewer as the first source so the repo hooks load.
+  Samuel's words (15 Nov, in the orchestrator chat): "Yes you can allways attach any repo you need". Earlier (12 Nov):
+  "Yes attach it and write somewhere permission that everytime nime orchestrator is created it can add this repo",
+  and (14 Nov) "it should be already done that you can add repo yourself everytime in the new sessions ... make sure
+  this situation doesnt happen again". This covers only attaching repositories (no production writes, no secrets, no
+  deleting repositories). Details and the rest of the rules: `AGENTS.md`, issue #60.
 - **Working without Samuel (Samuel, 14 Nov, standing):** "Continue without me everytime when there nothing on and
   something could be that doesnt need my approval - and many approvals you can do yourself and decide for me, only the
   critical ones are for me". So the orchestrator never sits idle while non-critical work exists: it starts the next
