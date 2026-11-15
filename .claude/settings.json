@@ -24,5 +24,33 @@
       "Bash(curl -s https://api.vercel.com/*)",
       "Bash(curl -s \"https://api.vercel.com/*)"
     ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/context-guard.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/context-guard.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  },
+  "skillOverrides": {
+    "update-config": "user-invocable-only"
   }
 }
