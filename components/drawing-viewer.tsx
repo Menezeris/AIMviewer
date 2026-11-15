@@ -22,8 +22,10 @@ import type { DrawingRegion, SelectedElement } from "@/lib/data/drawing";
 import { CapturePlanOverlay } from "@/components/capture-plan-overlay";
 
 // Worker self-hosted from our own origin (D-030 perf, addendum): the bundler resolves it from
-// the installed `pdfjs-dist` (version automatically matching the API -> no version
-// mismatch) and emits it as a hashed static asset. Eliminates the external fetch to
+// the top-level `pdfjs-dist` and emits it as a hashed static asset. That copy must be the one
+// react-pdf uses (react-pdf is pinned to the release that depends on the same pdfjs-dist), or
+// every drawing fails on the API/worker version check; drawing-viewer-pdfjs.test.ts guards it.
+// Eliminates the external fetch to
 // unpkg, which on every drawing open added DNS+TLS+a download of ~1 MB before
 // the PDF parsing itself (and could hang/be rate-limited).
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
