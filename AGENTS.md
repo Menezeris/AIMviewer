@@ -24,6 +24,9 @@
   number in issue #60; never merge a PR (the orchestrator merges on Samuel's word); never use the live viewer
   UI tools to verify. Platform work follows `AIMforked/docs/platform/orchestration.md` (D-191).
   Details: [`docs/agent-process.md`](docs/agent-process.md).
+- **Context limit (D-197):** rotate at about 300k tokens of context, never postponed. `.claude/hooks/context-guard.py`
+  (wired in `.claude/settings.json`) warns at 250k and demands rotation at 300k; it loads only when AIMviewer or
+  AIMforked is the session's first source. Details: `AIMforked/docs/platform/orchestration.md` section 10.
 - **PRs (D-187):** merge `origin/main` into the branch first; push only after `npx tsc --noEmit`,
   `npx vitest run`, `node scripts/ci/lint-changed.mjs origin/main`; the gate is green GitHub Actions CI.
 - **Database:** nodes in `objects`, edges in `relationships`, IFC-first naming. Conventions:
